@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 
 const routes = [
-  {
+  /*{
     label: "Dashboard",
     icon: LayoutDashboard,
     href: "/",
     color: "text-sky-500",
-  },
+  },*/
   {
     label: "Ventas",
     icon: ShoppingCart,

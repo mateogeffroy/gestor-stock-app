@@ -43,7 +43,12 @@ export default function VentasPage() {
   const [productos, setProductos] = useState<Producto[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [searchTerm, productos]);
 
   const [nuevaVenta, setNuevaVenta] = useState({
     tipo: "orden_compra",
@@ -361,68 +366,108 @@ export default function VentasPage() {
 
               <div className="space-y-2">
                 <Label>Buscar Producto</Label>
-                <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-                  <PopoverTrigger asChild>
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="Buscar por nombre, código o ID..."
-                        className="pl-8 w-full"
-                        value={searchTerm}
-                        onChange={(e) => {
-                          setSearchTerm(e.target.value)
-                          if (e.target.value.length >= 2) {
-                            setIsSearchOpen(true)
-                          }
-                        }}
-                        onFocus={() => {
-                          if (searchTerm.length >= 2) {
-                            setIsSearchOpen(true)
-                          }
-                        }}
-                      />
+                <div className="relative">
+                  <div className="flex">
+                    <Input
+                      placeholder="Buscar producto..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSearchTerm(value);
+                        if (value.length >= 2) {
+                          searchProductos(value);
+                          if (!isSearchOpen) setIsSearchOpen(true);
+                        } else if (value.length === 0) {
+                          setIsSearchOpen(false);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Navegación con flechas
+                        if (e.key === "ArrowDown") {
+                          e.preventDefault();
+                          const newIndex = Math.min((selectedIndex + 1), productos.length - 1);
+                          setSelectedIndex(newIndex);
+                        } else if (e.key === "ArrowUp") {
+                          e.preventDefault();
+                          const newIndex = Math.max((selectedIndex - 1), -1);
+                          setSelectedIndex(newIndex);
+                        } else if (e.key === "Enter" && selectedIndex >= 0) {
+                          e.preventDefault();
+                          handleSelectProducto(productos[selectedIndex]);
+                          setIsSearchOpen(false);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setIsSearchOpen(false);
+                        }
+                      }}
+                      className="w-full"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      type="button"
+                      onClick={() => setIsSearchOpen(!isSearchOpen)}
+                      className="ml-2"
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Dropdown results */}
+                  {isSearchOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {isSearching ? (
+                        <div className="flex justify-center items-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        </div>
+                      ) : productos.length === 0 ? (
+                        <div className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">
+                          No se encontraron productos.
+                        </div>
+                      ) : (
+                        <ul className="py-1">
+                          {productos.map((producto, index) => {
+                            // Función para resaltar coincidencias
+                            const highlightMatch = (text) => {
+                              if (!searchTerm) return text;
+                              const parts = text.split(new RegExp(`(${searchTerm})`, 'gi'));
+                              return parts.map((part, i) =>
+                                part.toLowerCase() === searchTerm.toLowerCase() ? (
+                                  <span key={i} className="bg-red-400/20 rounded-sm">{part}</span>
+                                ) : (
+                                  part
+                                )
+                              );
+                            };
+
+                            return (
+                              <li
+                                key={producto.id}
+                                className={`px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                                  index === selectedIndex ? "bg-gray-100 dark:bg-gray-700" : ""
+                                }`}
+                                onClick={() => {
+                                  handleSelectProducto(producto);
+                                  setIsSearchOpen(false);
+                                }}
+                                onMouseEnter={() => setSelectedIndex(index)}
+                              >
+                                <div className="font-medium text-black dark:text-white">
+                                  {highlightMatch(producto.nombre)}
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-300 flex gap-2">
+                                  <span>ID: {producto.id}</span>
+                                  {producto.codigo_barras && <span>Código: {producto.codigo_barras}</span>}
+                                  <span>${producto.precio_final || producto.precio_lista}</span>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </div>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0" align="start">
-                    <Command>
-                      <CommandInput
-                        placeholder="Buscar producto..."
-                        value={searchTerm}
-                        onValueChange={(value) => {
-                          setSearchTerm(value)
-                        }}
-                      />
-                      <CommandList>
-                        {isSearching ? (
-                          <div className="flex justify-center items-center py-2">
-                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                          </div>
-                        ) : (
-                          <>
-                            <CommandEmpty>No se encontraron productos.</CommandEmpty>
-                            <CommandGroup>
-                              {productos.map((producto) => (
-                                <CommandItem
-                                  key={producto.id}
-                                  onSelect={() => handleSelectProducto(producto)}
-                                  className="flex flex-col items-start"
-                                >
-                                  <div className="font-medium">{producto.nombre}</div>
-                                  <div className="text-xs text-muted-foreground flex gap-2">
-                                    <span>ID: {producto.id}</span>
-                                    {producto.codigo_barras && <span>Código: {producto.codigo_barras}</span>}
-                                    <span>${producto.precio_final || producto.precio_lista}</span>
-                                  </div>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </>
-                        )}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-2">

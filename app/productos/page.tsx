@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -28,6 +28,7 @@ import { Plus, Search, Edit, Trash2, Loader2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { productoService, type Producto, type ProductoInsert } from "@/services/producto-service"
 import { useToast } from "@/components/ui/use-toast"
+import { debounce } from "lodash"
 
 export default function ProductosPage() {
   const { toast } = useToast()
@@ -74,16 +75,29 @@ export default function ProductosPage() {
     }
   }
 
+  // Implementar búsqueda predictiva con debounce
+  const debouncedSearch = useCallback(
+    debounce((term: string) => {
+      setIsSearching(true)
+      loadProductos(1, term).finally(() => {
+        setIsSearching(false)
+      })
+    }, 300),
+    []
+  )
+
   useEffect(() => {
     loadProductos()
   }, [])
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSearching(true)
-    loadProductos(1, searchTerm).finally(() => {
-      setIsSearching(false)
-    })
+  // Efecto para manejar la búsqueda predictiva
+  useEffect(() => {
+    debouncedSearch(searchTerm)
+    // No es necesario cancelar el debounce en el cleanup porque lodash maneja eso automáticamente
+  }, [searchTerm, debouncedSearch])
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
   }
 
   const handleOpenDialog = (producto: Producto | null = null) => {
@@ -234,7 +248,7 @@ export default function ProductosPage() {
         <p className="text-muted-foreground">Gestiona el inventario de productos de La Cuerda Bebidas</p>
       </div>
 
-      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -242,19 +256,20 @@ export default function ProductosPage() {
             placeholder="Buscar productos..."
             className="pl-8 w-full"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={handleSearchChange}
           />
+          {isSearching && (
+            <div className="absolute right-2.5 top-2.5">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <Button type="submit" variant="outline" className="w-full sm:w-auto" disabled={isSearching}>
-            {isSearching ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Buscar
-          </Button>
           <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" /> Nuevo Producto
           </Button>
         </div>
-      </form>
+      </div>
 
       <Card>
         <CardHeader className="p-4">
@@ -282,36 +297,53 @@ export default function ProductosPage() {
                 </TableHeader>
                 <TableBody>
                   <AnimatePresence>
-                    {productos.map((producto) => (
-                      <motion.tr
-                        key={producto.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-b"
-                      >
-                        <TableCell className="font-medium">{producto.id}</TableCell>
-                        <TableCell>{producto.nombre}</TableCell>
-                        <TableCell>{producto.codigo_barras || "-"}</TableCell>
-                        <TableCell>${producto.precio_lista.toLocaleString()}</TableCell>
-                        <TableCell>
-                          {producto.utilidad_porcentual ? `${producto.utilidad_porcentual.toFixed(2)}%` : "-"}
+                    {productos.length > 0 ? (
+                      productos.map((producto) => (
+                        <motion.tr
+                          key={producto.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="border-b"
+                        >
+                          <TableCell className="font-medium">{producto.id}</TableCell>
+                          <TableCell>{producto.nombre}</TableCell>
+                          <TableCell>{producto.codigo_barras || "-"}</TableCell>
+                          <TableCell>${producto.precio_lista.toLocaleString()}</TableCell>
+                          <TableCell>
+                            {producto.utilidad_porcentual ? `${producto.utilidad_porcentual.toFixed(2)}%` : "-"}
+                          </TableCell>
+                          <TableCell>${producto.precio_final ? producto.precio_final.toLocaleString() : "-"}</TableCell>
+                          <TableCell>{producto.stock} unidades</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(producto)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(producto.id)}>
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </motion.tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <TableCell colSpan={8} className="text-center py-6">
+                          {searchTerm ? (
+                            <div className="flex flex-col items-center gap-2">
+                              <p>No se encontraron productos con "{searchTerm}"</p>
+                              <Button variant="outline" size="sm" onClick={() => setSearchTerm("")}>
+                                Mostrar todos
+                              </Button>
+                            </div>
+                          ) : (
+                            <p>No hay productos disponibles</p>
+                          )}
                         </TableCell>
-                        <TableCell>${producto.precio_final ? producto.precio_final.toLocaleString() : "-"}</TableCell>
-                        <TableCell>{producto.stock} unidades</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(producto)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(producto.id)}>
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </motion.tr>
-                    ))}
+                      </tr>
+                    )}
                   </AnimatePresence>
                 </TableBody>
               </Table>
@@ -435,4 +467,3 @@ export default function ProductosPage() {
     </div>
   )
 }
-
