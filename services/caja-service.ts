@@ -32,7 +32,28 @@ export const cajaService = {
   },
 
   async getVentasPorCaja(idCaja: number) {
-    const { data, error } = await supabase.from("ventas").select("*").eq("id_caja", idCaja)
+    const { data, error } = await supabase
+      .from("ventas")
+      .select(`
+        id,
+        importe_total,
+        fecha_y_hora,
+        tipo,
+        estado,
+        venta_detalles (
+          id,
+          id_producto,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          producto (
+            nombre,
+            codigo_barras
+          )
+        )
+      `)
+      .eq("id_caja", idCaja)
+      .order("fecha_y_hora", { ascending: true })
 
     if (error) throw error
 
@@ -46,7 +67,7 @@ export const cajaService = {
     const { data: ordenesCompra, error: errorOC } = await supabase
       .from("ventas")
       .select("importe_total")
-      .eq("tipo", "orden_compra") // Cambiado de 'Orden de compra' a 'orden_compra'
+      .eq("tipo", "orden_compra")
       .gte("fecha_y_hora", `${fechaHoy}T00:00:00`)
       .lte("fecha_y_hora", `${fechaHoy}T23:59:59`)
       .is("id_caja", null)
@@ -57,7 +78,7 @@ export const cajaService = {
     const { data: facturasB, error: errorFB } = await supabase
       .from("ventas")
       .select("importe_total")
-      .eq("tipo", "factura_b") // Cambiado de 'Factura electrónica B' a 'factura_b'
+      .eq("tipo", "factura_b")
       .gte("fecha_y_hora", `${fechaHoy}T00:00:00`)
       .lte("fecha_y_hora", `${fechaHoy}T23:59:59`)
       .is("id_caja", null)
@@ -113,4 +134,3 @@ export const cajaService = {
     return nuevaCaja
   },
 }
-

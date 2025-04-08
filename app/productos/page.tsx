@@ -30,6 +30,23 @@ import { productoService, type Producto, type ProductoInsert } from "@/services/
 import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
 
+const highlightMatches = (text: string, searchTerm: string) => {
+  if (!searchTerm.trim()) return text;
+
+  const regex = new RegExp(`(${searchTerm})`, 'gi');
+  const parts = text.split(regex);
+
+  return parts.map((part, index) => 
+    part.toLowerCase() === searchTerm.toLowerCase() ? (
+      <span key={index} className="bg-red-400/20 rounded-sm">
+        {part}
+      </span>
+    ) : (
+      part
+    )
+  );
+};
+
 export default function ProductosPage() {
   const { toast } = useToast()
   const [productos, setProductos] = useState<Producto[]>([])
@@ -308,14 +325,14 @@ export default function ProductosPage() {
                           className="border-b"
                         >
                           <TableCell className="font-medium">{producto.id}</TableCell>
-                          <TableCell>{producto.nombre}</TableCell>
+                          <TableCell>{highlightMatches(producto.nombre, searchTerm)}</TableCell>
                           <TableCell>{producto.codigo_barras || "-"}</TableCell>
                           <TableCell>${producto.precio_lista.toLocaleString()}</TableCell>
                           <TableCell>
                             {producto.utilidad_porcentual ? `${producto.utilidad_porcentual.toFixed(2)}%` : "-"}
                           </TableCell>
                           <TableCell>${producto.precio_final ? producto.precio_final.toLocaleString() : "-"}</TableCell>
-                          <TableCell>{producto.stock} unidades</TableCell>
+                          <TableCell>{producto.stock}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(producto)}>

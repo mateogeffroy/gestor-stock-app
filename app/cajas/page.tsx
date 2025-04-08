@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DollarSign, Receipt, CreditCard, ArrowUpRight, Loader2 } from "lucide-react"
 import { motion } from "framer-motion"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { cajaService, type Caja, type ResumenCaja } from "@/services/caja-service"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -34,6 +35,7 @@ export default function CajasPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isAlertOpen, setIsAlertOpen] = useState(false)
   const [selectedCaja, setSelectedCaja] = useState<Caja | null>(null)
+  const [ventasCaja, setVentasCaja] = useState<any[]>([])
   const [resumenDiario, setResumenDiario] = useState<ResumenCaja>({
     totalOrdenesCompra: 0,
     totalFacturasB: 0,
@@ -71,11 +73,6 @@ export default function CajasPage() {
     }
   }
 
-  useEffect(() => {
-    loadCajas()
-    loadResumenDiario()
-  }, [])
-
   const handleCerrarCaja = async () => {
     try {
       await cajaService.cerrarCaja()
@@ -96,10 +93,26 @@ export default function CajasPage() {
     }
   }
 
-  const handleVerDetalle = (caja: Caja) => {
+  const handleVerDetalle = async (caja: Caja) => {
     setSelectedCaja(caja)
+    try {
+      const ventas = await cajaService.getVentasPorCaja(caja.id)
+      setVentasCaja(ventas)
+    } catch (error) {
+      console.error("Error al cargar ventas de la caja:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar las ventas de la caja",
+        variant: "destructive",
+      })
+    }
     setIsDialogOpen(true)
   }
+
+  useEffect(() => {
+    loadCajas()
+    loadResumenDiario()
+  }, [])
 
   const container = {
     hidden: { opacity: 0 },
@@ -224,7 +237,7 @@ export default function CajasPage() {
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[800px]">
           <DialogHeader>
             <DialogTitle>Detalle de Caja</DialogTitle>
             <DialogDescription>
@@ -242,10 +255,47 @@ export default function CajasPage() {
                 </div>
                 <div className="border-t pt-4">
                   <h3 className="font-medium mb-2">Ventas Incluidas</h3>
-                  {/* Aquí se podría mostrar el detalle de las ventas asociadas a esta caja */}
-                  <p className="text-muted-foreground text-sm">
-                    Para ver el detalle completo de las ventas asociadas a esta caja, consulte el reporte de ventas.
-                  </p>
+                  <Accordion type="single" collapsible className="w-full">
+                    {ventasCaja.length > 0 ? (
+                      ventasCaja.map((venta) => (
+                        <AccordionItem key={venta.id} value={`venta-${venta.id}`}>
+                          <AccordionTrigger>
+                            <div className="flex justify-between w-full pr-4">
+                              <span>Venta #{venta.id} - {venta.tipo}</span>
+                              <span>
+                                {new Date(venta.fecha_y_hora).toLocaleTimeString()} - $
+                                {venta.importe_total.toLocaleString()}
+                              </span>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Producto</TableHead>
+                                  <TableHead>Cantidad</TableHead>
+                                  <TableHead>Precio Unitario</TableHead>
+                                  <TableHead>Subtotal</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {venta.venta_detalles.map((detalle: any) => (
+                                  <TableRow key={detalle.id}>
+                                    <TableCell>{detalle.producto.nombre}</TableCell>
+                                    <TableCell>{detalle.cantidad}</TableCell>
+                                    <TableCell>${detalle.precio_unitario.toLocaleString()}</TableCell>
+                                    <TableCell>${detalle.subtotal.toLocaleString()}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground text-sm">No hay ventas asociadas a esta caja.</p>
+                    )}
+                  </Accordion>
                 </div>
               </div>
             )}
@@ -274,4 +324,3 @@ export default function CajasPage() {
     </div>
   )
 }
-

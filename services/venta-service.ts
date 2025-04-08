@@ -87,5 +87,90 @@ export const ventaService = {
 
     return nuevaVenta
   },
-}
+  
+  async deleteVenta(id: number) {
+    // Primero eliminamos los detalles de la venta
+    const { error: detallesError } = await supabase.from("venta_detalles").delete().eq("id_venta", id)
+    if (detallesError) throw detallesError
+    
+    // Luego eliminamos la venta
+    const { error: ventaError } = await supabase.from("ventas").delete().eq("id", id)
+    if (ventaError) throw ventaError
+    
+    return true
+  },
 
+  async updateVenta(id: number, venta: VentaCompletaInsert) {
+    // Actualizar la venta principal
+    const { error: ventaError } = await supabase
+      .from("ventas")
+      .update({
+        importe_total: venta.importe_total,
+        tipo: venta.tipo,
+        estado: venta.estado,
+      })
+      .eq("id", id)
+  
+    if (ventaError) throw ventaError
+  
+    // Obtener los detalles actuales de la venta
+    const { data: detallesActuales, error: detallesError } = await supabase
+      .from("venta_detalles")
+      .select("*")
+      .eq("id_venta", id)
+  
+    if (detallesError) throw detallesError
+  
+    // Mapear IDs de los detalles actuales
+    const detallesActualesIds = detallesActuales?.map(d => d.id) || []
+  
+    // Detalles nuevos o modificados
+    const nuevosDetalles = venta.detalles.filter(d => !d.id || !detallesActualesIds.includes(d.id))
+    const detallesModificados = venta.detalles.filter(d => d.id && detallesActualesIds.includes(d.id))
+  
+    // Insertar nuevos detalles
+    if (nuevosDetalles.length > 0) {
+      const { error: insertError } = await supabase.from("venta_detalles").insert(
+        nuevosDetalles.map(detalle => ({
+          ...detalle,
+          id_venta: id,
+        }))
+      )
+      if (insertError) throw insertError
+    }
+  
+    // Actualizar detalles modificados
+    for (const detalle of detallesModificados) {
+      const { error: updateError } = await supabase
+        .from("venta_detalles")
+        .update(detalle)
+        .eq("id", detalle.id)
+      if (updateError) throw updateError
+    }
+  
+    // Eliminar detalles que ya no están en la venta
+    const idsDetallesNuevos = venta.detalles.map(d => d.id).filter(id => id !== undefined)
+    const detallesAEliminar = detallesActualesIds.filter(id => !idsDetallesNuevos.includes(id))
+  
+    if (detallesAEliminar.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("venta_detalles")
+        .delete()
+        .in("id", detallesAEliminar)
+      if (deleteError) throw deleteError
+    }
+  
+    // Actualizar stock de los productos afectados
+    for (const detalle of venta.detalles) {
+      if (detalle.id_producto) {
+        const { error: stockError } = await supabase.rpc("actualizar_stock", {
+          p_id_producto: detalle.id_producto,
+          p_cantidad: detalle.cantidad,
+        })
+        if (stockError) throw stockError
+      }
+    }
+  
+    return true
+  }  
+}

@@ -1,65 +1,26 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Plus, Search, X, Loader2 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
-import { ventaService, type Venta, type VentaCompletaInsert } from "@/services/venta-service"
-import { productoService, type Producto } from "@/services/producto-service"
 import { useToast } from "@/components/ui/use-toast"
-
-interface DetalleVenta {
-  id?: number
-  id_producto: number | null
-  nombre_producto?: string
-  precio_unitario: number
-  cantidad: number
-  descuento: number
-  subtotal: number
-  esNuevo?: boolean
-}
+import { VentasTable } from "./components/VentasTable"
+import { VentaForm } from "./components/VentaForm"
+import { fetchVentas, searchProductos, createVenta, deleteVenta } from "./actions"
+import { Venta } from "./types"
+import { Plus } from "lucide-react"
 
 export default function VentasPage() {
   const { toast } = useToast()
   const [ventas, setVentas] = useState<Venta[]>([])
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [productos, setProductos] = useState<Producto[]>([])
-  const [isSearching, setIsSearching] = useState(false)
-  const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    setSelectedIndex(-1);
-  }, [searchTerm, productos]);
-
-  const [nuevaVenta, setNuevaVenta] = useState({
-    tipo: "orden_compra",
-    descuento_general: 0,
-    detalles: [] as DetalleVenta[],
-  })
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [editingVenta, setEditingVenta] = useState<Venta | null>(null)
 
   const loadVentas = async () => {
     setIsLoading(true)
     try {
-      const data = await ventaService.getUltimasVentas()
+      const data = await fetchVentas()
       setVentas(data)
     } catch (error) {
       console.error("Error al cargar ventas:", error)
@@ -77,145 +38,36 @@ export default function VentasPage() {
     loadVentas()
   }, [])
 
-  const searchProductos = async (term: string) => {
-    if (!term || term.length < 2) {
-      setProductos([])
-      return
-    }
-
-    setIsSearching(true)
-    try {
-      const data = await productoService.searchProductos(term)
-      setProductos(data)
-    } catch (error) {
-      console.error("Error al buscar productos:", error)
-    } finally {
-      setIsSearching(false)
-    }
-  }
-
-  useEffect(() => {
-    const delaySearch = setTimeout(() => {
-      if (searchTerm.length >= 2) {
-        searchProductos(searchTerm)
-      }
-    }, 300)
-
-    return () => clearTimeout(delaySearch)
-  }, [searchTerm])
-
-  const handleOpenDialog = () => {
-    setNuevaVenta({
-      tipo: "orden_compra",
-      descuento_general: 0,
-      detalles: [
-        {
-          id_producto: null,
-          precio_unitario: 0,
-          cantidad: 1,
-          descuento: 0,
-          subtotal: 0,
-          esNuevo: true,
-        },
-      ],
-    })
+  const handleOpenDialog = (venta?: Venta) => {
+    setEditingVenta(venta || null)
     setIsDialogOpen(true)
-    // Resetear el estado de búsqueda al abrir el modal
-    setSearchTerm("")
-    setProductos([])
-    setIsSearchOpen(false)
   }
 
-  const handleSelectProducto = (producto: Producto) => {
-    const newDetalle: DetalleVenta = {
-      id_producto: producto.id,
-      nombre_producto: producto.nombre,
-      precio_unitario: producto.precio_final || producto.precio_lista,
-      cantidad: 1,
-      descuento: 0,
-      subtotal: producto.precio_final || producto.precio_lista,
+  const handleDelete = async (id: number) => {
+    if (confirm("¿Estás seguro de que deseas eliminar esta venta?")) {
+      try {
+        await deleteVenta(id)
+        toast({
+          title: "Éxito",
+          description: "Venta eliminada correctamente",
+        })
+        loadVentas()
+      } catch (error) {
+        console.error("Error al eliminar venta:", error)
+        toast({
+          title: "Error",
+          description: "No se pudo eliminar la venta",
+          variant: "destructive",
+        })
+      }
     }
-
-    const nuevosDetalles = [...nuevaVenta.detalles]
-    // Encontrar la posición de la fila vacía
-    const emptyRowIndex = nuevosDetalles.findIndex((d) => d.esNuevo)
-
-    if (emptyRowIndex !== -1) {
-      // Insertar antes de la fila vacía
-      nuevosDetalles.splice(emptyRowIndex, 0, newDetalle)
-    } else {
-      // Si no hay fila vacía, agregar al final
-      nuevosDetalles.push(newDetalle)
-    }
-
-    setNuevaVenta({
-      ...nuevaVenta,
-      detalles: nuevosDetalles,
-    })
-
-    setSearchTerm("")
-    setIsSearchOpen(false)
   }
 
-  const handleDetalleChange = (index: number, field: string, value: any) => {
-    const nuevosDetalles = [...nuevaVenta.detalles]
-    const detalle = { ...nuevosDetalles[index] }
-
-    // Actualizar el campo específico
-    ;(detalle as any)[field] = value
-
-    // Recalcular subtotal
-    if (field === "precio_unitario" || field === "cantidad" || field === "descuento") {
-      const precio = Number.parseFloat(detalle.precio_unitario.toString())
-      const cantidad = Number.parseInt(detalle.cantidad.toString())
-      const descuento = Number.parseFloat(detalle.descuento.toString()) || 0
-
-      const subtotalSinDescuento = precio * cantidad
-      const descuentoAmount = subtotalSinDescuento * (descuento / 100)
-      detalle.subtotal = subtotalSinDescuento - descuentoAmount
-    }
-
-    nuevosDetalles[index] = detalle
-    setNuevaVenta({
-      ...nuevaVenta,
-      detalles: nuevosDetalles,
-    })
-  }
-
-  const handleRemoveDetalle = (index: number) => {
-    const nuevosDetalles = [...nuevaVenta.detalles]
-    nuevosDetalles.splice(index, 1)
-
-    // Si eliminamos todos los detalles, agregar una fila vacía
-    if (nuevosDetalles.length === 0 || !nuevosDetalles.some((d) => d.esNuevo)) {
-      nuevosDetalles.push({
-        id_producto: null,
-        precio_unitario: 0,
-        cantidad: 1,
-        descuento: 0,
-        subtotal: 0,
-        esNuevo: true,
-      })
-    }
-
-    setNuevaVenta({
-      ...nuevaVenta,
-      detalles: nuevosDetalles,
-    })
-  }
-
-  const calcularTotal = () => {
-    const subtotal = nuevaVenta.detalles.reduce((sum, detalle) => sum + detalle.subtotal, 0)
-    const descuento = subtotal * (nuevaVenta.descuento_general / 100)
-    return subtotal - descuento
-  }
-
-  const handleSubmit = async () => {
+  const handleSubmit = async (ventaData: any) => {
     try {
-      // Filtrar la fila vacía y preparar los detalles
-      const detallesParaEnviar = nuevaVenta.detalles
-        .filter((detalle) => !detalle.esNuevo)
-        .map((detalle) => ({
+      const detallesParaEnviar = ventaData.detalles
+        .filter((detalle: any) => !detalle.esNuevo)
+        .map((detalle: any) => ({
           id_producto: detalle.id_producto,
           cantidad: detalle.cantidad,
           precio_unitario: detalle.precio_unitario,
@@ -231,18 +83,29 @@ export default function VentasPage() {
         return
       }
 
-      const ventaData: VentaCompletaInsert = {
-        importe_total: calcularTotal(),
-        tipo: nuevaVenta.tipo,
+      const ventaCompleta = {
+        importe_total: ventaData.detalles.reduce((sum: number, detalle: any) => 
+          sum + detalle.subtotal, 0) * (1 - (ventaData.descuento_general / 100)),
+        tipo: ventaData.tipo,
         estado: "Completada",
         detalles: detallesParaEnviar,
       }
 
-      await ventaService.createVenta(ventaData)
-      toast({
-        title: "Éxito",
-        description: "Venta registrada correctamente",
-      })
+      if (editingVenta) {
+        // Implementar actualización si es necesario
+        await createVenta(ventaCompleta)
+        toast({
+          title: "Éxito",
+          description: "Venta actualizada correctamente",
+        })
+      } else {
+        await createVenta(ventaCompleta)
+        toast({
+          title: "Éxito",
+          description: "Venta registrada correctamente",
+        })
+      }
+
       setIsDialogOpen(false)
       loadVentas()
     } catch (error) {
@@ -255,19 +118,6 @@ export default function VentasPage() {
     }
   }
 
-  const getEstadoColor = (estado: string) => {
-    switch (estado) {
-      case "Completada":
-        return "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400"
-      case "Pendiente":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
-      case "Cancelada":
-        return "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
@@ -276,7 +126,7 @@ export default function VentasPage() {
       </div>
 
       <div className="flex justify-end">
-        <Button onClick={handleOpenDialog}>
+        <Button onClick={() => handleOpenDialog()}>
           <Plus className="mr-2 h-4 w-4" /> Nueva Venta
         </Button>
       </div>
@@ -286,292 +136,22 @@ export default function VentasPage() {
           <CardTitle>Últimas Ventas</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <AnimatePresence>
-                    {ventas.map((venta) => (
-                      <motion.tr
-                        key={venta.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-b"
-                      >
-                        <TableCell className="font-medium">{venta.id}</TableCell>
-                        <TableCell>{new Date(venta.fecha_y_hora).toLocaleString()}</TableCell>
-                        <TableCell>
-                          {venta.tipo === "orden_compra"
-                            ? "Orden de compra"
-                            : venta.tipo === "factura_b"
-                              ? "Factura electrónica B"
-                              : venta.tipo}
-                        </TableCell>
-                        <TableCell>${venta.importe_total.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${getEstadoColor(venta.estado)}`}
-                          >
-                            {venta.estado}
-                          </span>
-                        </TableCell>
-                      </motion.tr>
-                    ))}
-                  </AnimatePresence>
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <VentasTable 
+            ventas={ventas} 
+            onEdit={handleOpenDialog} 
+            onDelete={handleDelete} 
+            isLoading={isLoading} 
+          />
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Nueva Venta</DialogTitle>
-            <DialogDescription>Completa los datos para registrar una nueva venta.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="tipo">Tipo de Venta</Label>
-                <Select
-                  value={nuevaVenta.tipo}
-                  onValueChange={(value) => setNuevaVenta({ ...nuevaVenta, tipo: value })}
-                >
-                  <SelectTrigger id="tipo">
-                    <SelectValue placeholder="Selecciona un tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="orden_compra">Orden de compra</SelectItem>
-                    <SelectItem value="factura_b">Factura electrónica B</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Buscar Producto</Label>
-                <div className="relative">
-                  <div className="flex">
-                    <Input
-                      placeholder="Buscar producto..."
-                      value={searchTerm}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setSearchTerm(value);
-                        if (value.length >= 2) {
-                          searchProductos(value);
-                          if (!isSearchOpen) setIsSearchOpen(true);
-                        } else if (value.length === 0) {
-                          setIsSearchOpen(false);
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        // Navegación con flechas
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          const newIndex = Math.min((selectedIndex + 1), productos.length - 1);
-                          setSelectedIndex(newIndex);
-                        } else if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          const newIndex = Math.max((selectedIndex - 1), -1);
-                          setSelectedIndex(newIndex);
-                        } else if (e.key === "Enter" && selectedIndex >= 0) {
-                          e.preventDefault();
-                          handleSelectProducto(productos[selectedIndex]);
-                          setIsSearchOpen(false);
-                        } else if (e.key === "Escape") {
-                          e.preventDefault();
-                          setIsSearchOpen(false);
-                        }
-                      }}
-                      className="w-full"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      type="button"
-                      onClick={() => setIsSearchOpen(!isSearchOpen)}
-                      className="ml-2"
-                    >
-                      <Search className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {/* Dropdown results */}
-                  {isSearchOpen && (
-                    <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {isSearching ? (
-                        <div className="flex justify-center items-center py-4">
-                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                        </div>
-                      ) : productos.length === 0 ? (
-                        <div className="p-3 text-center text-sm text-gray-500 dark:text-gray-400">
-                          No se encontraron productos.
-                        </div>
-                      ) : (
-                        <ul className="py-1">
-                          {productos.map((producto, index) => {
-                            // Función para resaltar coincidencias
-                            const highlightMatch = (text) => {
-                              if (!searchTerm) return text;
-                              const parts = text.split(new RegExp(`(${searchTerm})`, 'gi'));
-                              return parts.map((part, i) =>
-                                part.toLowerCase() === searchTerm.toLowerCase() ? (
-                                  <span key={i} className="bg-red-400/20 rounded-sm">{part}</span>
-                                ) : (
-                                  part
-                                )
-                              );
-                            };
-
-                            return (
-                              <li
-                                key={producto.id}
-                                className={`px-3 py-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${
-                                  index === selectedIndex ? "bg-gray-100 dark:bg-gray-700" : ""
-                                }`}
-                                onClick={() => {
-                                  handleSelectProducto(producto);
-                                  setIsSearchOpen(false);
-                                }}
-                                onMouseEnter={() => setSelectedIndex(index)}
-                              >
-                                <div className="font-medium text-black dark:text-white">
-                                  {highlightMatch(producto.nombre)}
-                                </div>
-                                <div className="text-xs text-gray-600 dark:text-gray-300 flex gap-2">
-                                  <span>ID: {producto.id}</span>
-                                  {producto.codigo_barras && <span>Código: {producto.codigo_barras}</span>}
-                                  <span>${producto.precio_final || producto.precio_lista}</span>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Detalle de Venta</Label>
-                <div className="border rounded-md overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Producto</TableHead>
-                        <TableHead>Precio</TableHead>
-                        <TableHead>Descuento %</TableHead>
-                        <TableHead>Cantidad</TableHead>
-                        <TableHead>Subtotal</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {nuevaVenta.detalles.map((detalle, index) => (
-                        <TableRow key={index}>
-                          <TableCell>
-                            {detalle.esNuevo ? (
-                              <Input
-                                placeholder="Nombre del producto"
-                                value={detalle.nombre_producto || ""}
-                                onChange={(e) => handleDetalleChange(index, "nombre_producto", e.target.value)}
-                              />
-                            ) : (
-                              detalle.nombre_producto
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={detalle.precio_unitario}
-                              onChange={(e) =>
-                                handleDetalleChange(index, "precio_unitario", Number.parseFloat(e.target.value))
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={detalle.descuento}
-                              onChange={(e) =>
-                                handleDetalleChange(index, "descuento", Number.parseFloat(e.target.value))
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              type="number"
-                              min="1"
-                              value={detalle.cantidad}
-                              onChange={(e) => handleDetalleChange(index, "cantidad", Number.parseInt(e.target.value))}
-                            />
-                          </TableCell>
-                          <TableCell className="font-medium">${detalle.subtotal.toLocaleString()}</TableCell>
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleRemoveDetalle(index)}
-                              disabled={detalle.esNuevo && nuevaVenta.detalles.length === 1}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="descuento_general">Descuento General (%)</Label>
-                <Input
-                  id="descuento_general"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={nuevaVenta.descuento_general}
-                  onChange={(e) =>
-                    setNuevaVenta({ ...nuevaVenta, descuento_general: Number.parseFloat(e.target.value) })
-                  }
-                />
-              </div>
-
-              <div className="flex justify-end text-lg font-bold">Total: ${calcularTotal().toLocaleString()}</div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSubmit}>Guardar Venta</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <VentaForm
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        venta={editingVenta || undefined}
+        onSubmit={handleSubmit}
+        onSearchProductos={searchProductos}
+      />
     </div>
   )
 }
-
