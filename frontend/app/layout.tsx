@@ -1,3 +1,5 @@
+// app/layout.tsx (Versión Limpia)
+
 import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
@@ -17,11 +19,12 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: React.ReactNode;
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
       <body className={inter.className}>
+        {/* Se elimina el AuthProvider */}
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <div className="flex h-screen overflow-hidden">
             <Sidebar />
@@ -31,9 +34,5 @@ export default function RootLayout({
         </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }
-
-
-
-import './globals.css'

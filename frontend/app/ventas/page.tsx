@@ -21,7 +21,7 @@ export default function VentasPage() {
     setIsLoading(true)
     try {
       const data = await fetchVentas()
-      setVentas(data)
+      setVentas(data.results || [])
     } catch (error) {
       console.error("Error al cargar ventas:", error)
       toast({
