@@ -1,29 +1,14 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 import { Plus, Search, Edit, Trash2, Loader2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { productoService, type Producto, type ProductoInsert } from "@/services/producto-service"
@@ -31,20 +16,14 @@ import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
 
 const highlightMatches = (text: string, searchTerm: string) => {
-  if (!searchTerm.trim()) return text;
-
-  const regex = new RegExp(`(${searchTerm})`, 'gi');
-  const parts = text.split(regex);
-
-  return parts.map((part, index) => 
-    part.toLowerCase() === searchTerm.toLowerCase() ? (
-      <span key={index} className="bg-red-400/20 rounded-sm">
-        {part}
-      </span>
-    ) : (
-      part
-    )
-  );
+    if (!searchTerm.trim()) return text;
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, index) => 
+        part.toLowerCase() === searchTerm.toLowerCase() ? (
+        <span key={index} className="bg-red-400/20 rounded-sm">{part}</span>
+        ) : (part)
+    );
 };
 
 export default function ProductosPage() {
@@ -65,20 +44,15 @@ export default function ProductosPage() {
     precio_final: string
     codigo_barras: string
   }>({
-    nombre: "",
-    stock: "",
-    precio_lista: "",
-    utilidad_porcentual: "",
-    precio_final: "",
-    codigo_barras: "",
+    nombre: "", stock: "", precio_lista: "", utilidad_porcentual: "", precio_final: "", codigo_barras: "",
   })
 
   const loadProductos = async (page = 1, search = searchTerm) => {
     setIsLoading(true)
     try {
       const result = await productoService.getProductos(page, 5, search)
-      setProductos(result.productos)
-      setTotalPages(result.totalPages)
+      setProductos(result?.productos || [])
+      setTotalPages(result?.totalPages || 1)
       setCurrentPage(page)
     } catch (error) {
       console.error("Error al cargar productos:", error)
@@ -92,7 +66,6 @@ export default function ProductosPage() {
     }
   }
 
-  // Implementar búsqueda predictiva con debounce
   const debouncedSearch = useCallback(
     debounce((term: string) => {
       setIsSearching(true)
@@ -113,30 +86,19 @@ export default function ProductosPage() {
     // No es necesario cancelar el debounce en el cleanup porque lodash maneja eso automáticamente
   }, [searchTerm, debouncedSearch])
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value)
-  }
-
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => { setSearchTerm(e.target.value) }
   const handleOpenDialog = (producto: Producto | null = null) => {
     if (producto) {
       setEditingProducto(producto)
       setNuevoProducto({
-        nombre: producto.nombre,
-        stock: producto.stock.toString(),
-        precio_lista: producto.precio_lista.toString(),
-        utilidad_porcentual: producto.utilidad_porcentual?.toString() || "",
-        precio_final: producto.precio_final?.toString() || "",
+        nombre: producto.nombre, stock: producto.stock.toString(), precio_lista: producto.precio_lista.toString(),
+        utilidad_porcentual: producto.utilidad_porcentual?.toString() || "", precio_final: producto.precio_final?.toString() || "",
         codigo_barras: producto.codigo_barras || "",
       })
     } else {
       setEditingProducto(null)
       setNuevoProducto({
-        nombre: "",
-        stock: "",
-        precio_lista: "",
-        utilidad_porcentual: "",
-        precio_final: "",
-        codigo_barras: "",
+        nombre: "", stock: "", precio_lista: "", utilidad_porcentual: "", precio_final: "", codigo_barras: "",
       })
     }
     setIsDialogOpen(true)
@@ -200,6 +162,7 @@ export default function ProductosPage() {
   }
 
   const handleSubmit = async () => {
+    console.log("Botón 'Guardar' presionado, iniciando handleSubmit...")
     try {
       const productoData: ProductoInsert = {
         nombre: nuevoProducto.nombre,
@@ -213,21 +176,27 @@ export default function ProductosPage() {
       }
 
       if (editingProducto) {
+        // --- Lógica para EDITAR ---
         await productoService.updateProducto(editingProducto.id, productoData)
         toast({
           title: "Éxito",
           description: "Producto actualizado correctamente",
         })
+        // Al editar, recargamos la PÁGINA ACTUAL
+        loadProductos(currentPage) 
       } else {
+        // --- Lógica para CREAR ---
         await productoService.createProducto(productoData)
         toast({
           title: "Éxito",
           description: "Producto creado correctamente",
         })
+        // Al crear, recargamos la PRIMERA PÁGINA para ver la lista actualizada
+        loadProductos(1) 
       }
 
       setIsDialogOpen(false)
-      loadProductos(currentPage)
+      // Se quita el loadProductos de aquí, ya que ahora está dentro del if/else
     } catch (error) {
       console.error("Error al guardar producto:", error)
       toast({
@@ -329,7 +298,7 @@ export default function ProductosPage() {
                           <TableCell>{producto.codigo_barras || "-"}</TableCell>
                           <TableCell>${producto.precio_lista.toLocaleString()}</TableCell>
                           <TableCell>
-                            {producto.utilidad_porcentual ? `${producto.utilidad_porcentual.toFixed(2)}%` : "-"}
+                            {producto.utilidad_porcentual ? `${Number(producto.utilidad_porcentual).toFixed(2)}%` : "-"}
                           </TableCell>
                           <TableCell>${producto.precio_final ? producto.precio_final.toLocaleString() : "-"}</TableCell>
                           <TableCell>{producto.stock}</TableCell>
