@@ -1,12 +1,20 @@
-// app/ventas/types.ts (Versión Adaptada)
+// frontend/app/ventas/types.ts
 
-import { Producto } from "@/services/producto-service"; // Reutilizamos el tipo Producto
+// Definimos aquí el tipo Producto para que el módulo sea independiente.
+export interface Producto {
+    id: number;
+    nombre: string;
+    stock: number;
+    precio_lista: string;
+    utilidad_porcentual: string;
+    precio_final: string;
+    codigo_barras: string;
+}
 
 // Este tipo representa un detalle de venta como llega desde Django
 export interface DetalleVenta {
   id: number;
   producto: Producto; // El objeto producto completo
-  id_producto: number;
   cantidad: number;
   precio_unitario: string; // Django envía los decimales como string
   subtotal: string;
@@ -17,7 +25,7 @@ export interface Venta {
   id: number;
   importe_total: string;
   fecha_y_hora: string;
-  tipo: string;
+  tipo: 'orden_compra' | 'factura_b';
   estado: string;
   descuento_general: string;
   redondeo: string;
@@ -25,19 +33,17 @@ export interface Venta {
   detalles: DetalleVenta[];
 }
 
-// Estos tipos son para el formulario y la creación, los mantenemos como estaban
-// pero nos aseguramos que sean compatibles.
+// Estos tipos son para el formulario. Los mantenemos para la lógica interna del form.
 export interface DetalleVentaForm {
-  id_producto: number | null;
+  id_producto: number;
   nombre_producto?: string;
   precio_unitario: number;
   cantidad: number;
   subtotal: number;
-  esNuevo?: boolean;
 }
 
 export interface NuevaVentaState {
-  tipo: string;
+  tipo: 'orden_compra' | 'factura_b';
   descuento_general: number;
   detalles: DetalleVentaForm[];
 }

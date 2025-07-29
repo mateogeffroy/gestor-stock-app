@@ -1,6 +1,7 @@
-# gestion/serializers.py (Versión Corregida)
+# backend/gestion/serializers.py
 
 from rest_framework import serializers
+from django.db import transaction
 from .models import Producto, Caja, Venta, VentaDetalle
 
 class ProductoSerializer(serializers.ModelSerializer):
@@ -14,17 +15,18 @@ class CajaSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class VentaDetalleSerializer(serializers.ModelSerializer):
-    # 👇 CAMBIO 1: Mapeamos 'id_producto' a 'producto'
-    # Le decimos a DRF que el campo 'id_producto' que esperamos del frontend
-    # corresponde al campo 'producto' de nuestro modelo.
+    # --- CAMBIO CLAVE: Eliminamos 'write_only=True' del id_producto ---
+    # y lo movemos a su propia definición para que se use al escribir.
     id_producto = serializers.PrimaryKeyRelatedField(
         queryset=Producto.objects.all(), source='producto'
     )
+    # Para la lectura (cuando devolvemos datos), mostramos el objeto producto completo.
+    producto_data = ProductoSerializer(source='producto', read_only=True)
 
     class Meta:
         model = VentaDetalle
-        # 👇 CAMBIO 2: Usamos 'id_producto' en la lista de campos.
-        fields = ['id', 'id_producto', 'cantidad', 'precio_unitario', 'subtotal']
+        fields = ['id', 'id_producto', 'producto_data', 'cantidad', 'precio_unitario', 'subtotal']
+
 
 class VentaSerializer(serializers.ModelSerializer):
     detalles = VentaDetalleSerializer(many=True)
@@ -35,15 +37,37 @@ class VentaSerializer(serializers.ModelSerializer):
             'id', 'importe_total', 'fecha_y_hora', 'caja', 
             'tipo', 'estado', 'descuento_general', 'redondeo', 'detalles'
         ]
+        read_only_fields = ['id', 'importe_total', 'fecha_y_hora', 'estado', 'caja']
 
     def create(self, validated_data):
-        # 👇 CAMBIO 3: Simplificamos el método create
         detalles_data = validated_data.pop('detalles')
-        venta = Venta.objects.create(**validated_data)
-        
-        # Ahora el serializador ya ha convertido 'id_producto' en una instancia de Producto,
-        # así que la creación es más directa.
-        for detalle_data in detalles_data:
-            VentaDetalle.objects.create(venta=venta, **detalle_data)
+        descuento_general = validated_data.get('descuento_general', 0)
+
+        with transaction.atomic():
+            subtotal_bruto = sum(item['subtotal'] for item in detalles_data)
             
+            if descuento_general > 0:
+                # Ojo: Asegurarse que descuento_general sea un número para el cálculo
+                importe_final = subtotal_bruto * (1 - (float(descuento_general) / 100))
+            else:
+                importe_final = subtotal_bruto
+            
+            validated_data['importe_total'] = importe_final
+            
+            venta = Venta.objects.create(**validated_data)
+
+            for detalle_data in detalles_data:
+                producto_instancia = detalle_data['producto']
+                cantidad_vendida = detalle_data['cantidad']
+                
+                if producto_instancia.stock < cantidad_vendida:
+                    raise serializers.ValidationError(
+                        f"No hay stock suficiente para '{producto_instancia.nombre}'. Stock disponible: {producto_instancia.stock}"
+                    )
+                
+                producto_instancia.stock -= cantidad_vendida
+                producto_instancia.save()
+
+                VentaDetalle.objects.create(venta=venta, **detalle_data)
+        
         return venta

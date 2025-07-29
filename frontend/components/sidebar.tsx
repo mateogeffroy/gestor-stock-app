@@ -1,20 +1,22 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, ShoppingCart, Package, DollarSign, Menu, X } from "lucide-react"
+// 1. IMPORTAMOS EL NUEVO ÍCONO
+import { Home, ShoppingCart, Package, DollarSign, Menu, X } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 
+// 2. AGREGAMOS LA RUTA "INICIO" AL PRINCIPIO DE LA LISTA
 const routes = [
-  /*{
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    href: "/",
+  {
+    label: "Inicio",
+    icon: Home,
+    href: "/", // La ruta raíz
     color: "text-sky-500",
-  },*/
+  },
   {
     label: "Ventas",
     icon: ShoppingCart,
@@ -39,6 +41,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
+  // El resto del componente no necesita cambios...
   return (
     <>
       <Button
@@ -111,4 +114,3 @@ export default function Sidebar() {
     </>
   )
 }
-
