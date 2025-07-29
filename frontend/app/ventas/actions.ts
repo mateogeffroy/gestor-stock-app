@@ -1,20 +1,26 @@
-// app/ventas/actions.ts (Versión Adaptada)
 "use server"
 
-import { fetchFromAPI } from "@/lib/api";
+import { fetchFromAPI } from "@/lib/api"; 
 import { Venta } from "./types";
 
-export const fetchVentas = async (): Promise<Venta[]> => {
+interface PaginatedResponse<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export const fetchVentas = async (): Promise<PaginatedResponse<Venta>> => {
+  // Ahora la función devuelve el objeto paginado completo
   const data = await fetchFromAPI('/api/ventas/');
-  // Asumimos que la API de ventas no está paginada por ahora
-  // Si lo estuviera, sería: return data.results;
   return data;
 };
 
 export const searchProductos = async (term: string) => {
   if (!term) return [];
   const data = await fetchFromAPI(`/api/productos/?search=${term}`);
-  return data.results || [];
+  // La búsqueda de productos también es paginada
+  return data.results || []; 
 };
 
 export const createVenta = async (ventaData: any) => {

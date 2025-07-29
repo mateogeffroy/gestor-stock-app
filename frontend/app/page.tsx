@@ -1,91 +1,47 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ShoppingCart, Package, DollarSign, TrendingUp } from "lucide-react"
-import { motion } from "framer-motion"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { ShoppingCart } from "lucide-react"
 
 export default function Home() {
-  const stats = [
-    {
-      title: "Ventas Totales",
-      value: "$125,430",
-      icon: ShoppingCart,
-      color: "bg-violet-100 text-violet-500 dark:bg-violet-900/20",
-      change: "+12.5%",
-    },
-    {
-      title: "Productos",
-      value: "124",
-      icon: Package,
-      color: "bg-pink-100 text-pink-700 dark:bg-pink-900/20",
-      change: "+3.2%",
-    },
-    {
-      title: "Caja Actual",
-      value: "$4,320",
-      icon: DollarSign,
-      color: "bg-orange-100 text-orange-500 dark:bg-orange-900/20",
-      change: "+18.7%",
-    },
-    {
-      title: "Crecimiento",
-      value: "24.5%",
-      icon: TrendingUp,
-      color: "bg-green-100 text-green-500 dark:bg-green-900/20",
-      change: "+4.1%",
-    },
-  ]
+  // --- Estados para la calculadora ---
+  // Guardamos los valores de los inputs del usuario
+  const [total, setTotal] = useState("")
+  const [discount, setDiscount] = useState("")
+  // Guardamos el resultado del cálculo
+  const [discountedTotal, setDiscountedTotal] = useState(0)
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
-  }
+  // --- Efecto para calcular dinámicamente ---
+  // Este hook se ejecuta cada vez que 'total' o 'discount' cambian
+  useEffect(() => {
+    // Convertimos el texto de los inputs a números
+    const numericTotal = parseFloat(total)
+    const numericDiscount = parseFloat(discount)
 
-  const item = {
-    hidden: { y: 20, opacity: 0 },
-    show: { y: 0, opacity: 1 },
-  }
+    // Validamos que sean números válidos antes de calcular
+    if (!isNaN(numericTotal) && !isNaN(numericDiscount)) {
+      const result = numericTotal - (numericTotal * (numericDiscount / 100))
+      setDiscountedTotal(result)
+    } else {
+      // Si un input no es un número válido, mostramos el total o 0
+      setDiscountedTotal(numericTotal || 0)
+    }
+  }, [total, discount]) // Dependencias: el efecto se re-ejecuta si cambian
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Inicio</h1>
         <p className="text-muted-foreground">Bienvenido al sistema de gestión de La Cuerda Bebidas</p>
       </div>
 
-      <motion.div
-        className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
-        variants={container}
-        initial="hidden"
-        animate="show"
-      >
-        {stats.map((stat) => (
-          <motion.div key={stat.title} variants={item}>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <div className={`rounded-full p-2 ${stat.color}`}>
-                  <stat.icon className="h-4 w-4" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
-                  <TrendingUp className="h-3 w-3 text-green-500" />
-                  <span>{stat.change} desde el mes pasado</span>
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </motion.div>
-
+      {/* --- Contenedor principal de las tarjetas --- */}
       <div className="grid gap-4 md:grid-cols-2">
+
+        {/* --- Tarjeta de Ventas Recientes (sin cambios) --- */}
         <Card>
           <CardHeader>
             <CardTitle>Ventas Recientes</CardTitle>
@@ -108,26 +64,39 @@ export default function Home() {
           </CardContent>
         </Card>
 
+        {/* --- NUEVA: Tarjeta de Calculadora de Descuento --- */}
         <Card>
           <CardHeader>
-            <CardTitle>Productos Populares</CardTitle>
+            <CardTitle>Calculadora de Descuento</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {["Cerveza Quilmes", "Fernet Branca", "Vino Malbec", "Vodka Absolut", "Whisky Johnnie Walker"].map(
-                (product, i) => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="rounded-full bg-pink-100 p-2 text-pink-700 dark:bg-pink-900/20">
-                      <Package className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{product}</p>
-                      <p className="text-xs text-muted-foreground">Stock: {Math.floor(Math.random() * 100)} unidades</p>
-                    </div>
-                    <div className="text-sm font-medium">${Math.floor(Math.random() * 5000)}</div>
-                  </div>
-                ),
-              )}
+              <div className="space-y-2">
+                <Label htmlFor="total">Total ($)</Label>
+                <Input
+                  id="total"
+                  type="number"
+                  placeholder="Ej: 1000"
+                  value={total}
+                  onChange={(e) => setTotal(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="discount">Descuento (%)</Label>
+                <Input
+                  id="discount"
+                  type="number"
+                  placeholder="Ej: 20"
+                  value={discount}
+                  onChange={(e) => setDiscount(e.target.value)}
+                />
+              </div>
+              <div className="pt-2">
+                <p className="text-sm font-medium text-muted-foreground">Total con descuento:</p>
+                <p className="text-3xl font-bold">
+                  ${discountedTotal.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -135,4 +104,3 @@ export default function Home() {
     </div>
   )
 }
-
