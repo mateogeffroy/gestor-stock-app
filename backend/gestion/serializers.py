@@ -1,6 +1,6 @@
 # backend/gestion/serializers.py
 
-from decimal import Decimal # <<< 1. IMPORTAMOS DECIMAL
+from decimal import Decimal
 from rest_framework import serializers
 from django.db import transaction
 from .models import Producto, Caja, Venta, VentaDetalle
@@ -24,7 +24,7 @@ class VentaDetalleSerializer(serializers.ModelSerializer):
     class Meta:
         model = VentaDetalle
         fields = ['id', 'producto', 'id_producto', 'cantidad', 'precio_unitario', 'descuento_individual', 'subtotal']
-        read_only_fields = ['subtotal']
+
 
 class VentaSerializer(serializers.ModelSerializer):
     detalles = VentaDetalleSerializer(many=True)
@@ -40,10 +40,15 @@ class VentaSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         detalles_data = validated_data.pop('detalles')
         descuento_general = validated_data.get('descuento_general', 0)
+        
+        # --- INICIO DEL CAMBIO ---
+        # Lista para guardar las advertencias de stock
+        warnings = [] 
+        # --- FIN DEL CAMBIO ---
 
         with transaction.atomic():
             venta = Venta.objects.create(importe_total=0, **validated_data)
-            total_venta_final = Decimal('0.0') # Usamos Decimal para el total
+            total_venta_final = Decimal('0.0')
 
             for detalle_data in detalles_data:
                 producto_instancia = detalle_data['producto']
@@ -54,16 +59,16 @@ class VentaSerializer(serializers.ModelSerializer):
                 subtotal_sin_descuento = precio_unitario * cantidad_vendida
                 descuento_total_linea = float(descuento_individual) + float(descuento_general)
                 
-                # --- 2. CORREGIMOS EL CÁLCULO ---
-                # Convertimos el factor de descuento a Decimal antes de multiplicar
                 factor_descuento = Decimal(1 - (descuento_total_linea / 100))
                 subtotal_final_linea = subtotal_sin_descuento * factor_descuento
-                # --- FIN DEL CAMBIO ---
                 
                 total_venta_final += subtotal_final_linea
 
+                # --- INICIO DEL CAMBIO ---
+                # Ya no lanzamos un error, solo guardamos una advertencia
                 if producto_instancia.stock < cantidad_vendida:
-                    raise serializers.ValidationError(f"Stock insuficiente para '{producto_instancia.nombre}'.")
+                    warnings.append(f"Stock insuficiente para '{producto_instancia.nombre}'. Quedó en {producto_instancia.stock - cantidad_vendida}.")
+                # --- FIN DEL CAMBIO ---
                 
                 producto_instancia.stock -= cantidad_vendida
                 producto_instancia.save()
@@ -77,4 +82,10 @@ class VentaSerializer(serializers.ModelSerializer):
             venta.importe_total = total_venta_final
             venta.save()
         
-        return venta
+        # --- INICIO DEL CAMBIO ---
+        # Añadimos las advertencias a los datos de la venta que se devuelven al frontend
+        # El método to_representation convierte la instancia de la venta a un diccionario JSON
+        data = self.to_representation(venta)
+        data['warnings'] = warnings
+        return data
+        # --- FIN DEL CAMBIO ---
