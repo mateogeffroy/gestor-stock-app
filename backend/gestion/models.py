@@ -39,6 +39,8 @@ class VentaDetalle(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.SET_NULL, null=True)
     cantidad = models.IntegerField()
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
+    # --- CAMBIO CLAVE: Agregamos el campo para el descuento individual ---
+    descuento_individual = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):

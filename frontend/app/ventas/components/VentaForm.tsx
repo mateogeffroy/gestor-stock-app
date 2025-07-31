@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Venta, NuevaVentaState } from "../types"
+import { useState, useEffect, useMemo } from "react"
+import { Venta, NuevaVentaState, DetalleVentaForm } from "../types"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,170 +9,202 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ProductSearch } from "./ProductSearch"
 import { DetalleVentaTable } from "./DetalleVentaTable"
+import { Producto } from "../types" // Importamos el tipo Producto
 
 interface VentaFormProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   venta?: Venta
   onSubmit: (ventaData: NuevaVentaState) => void
-  onSearchProductos: (term: string) => Promise<any[]>
+  onSearchProductos: (term: string) => Promise<Producto[]>
+}
+
+// Estado inicial para un nuevo detalle en el formulario
+const initialDetalleState: DetalleVentaForm = {
+  id_producto: null,
+  nombre_producto: '',
+  precio_unitario: 0,
+  cantidad: 1,
+  descuento_individual: 0,
+  subtotal: 0,
+  esNuevo: true,
 }
 
 export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProductos }: VentaFormProps) {
+  
   const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>({
-    tipo: venta?.tipo || "orden_compra",
-    descuento_general: venta?.descuento_general || 0,
-    detalles: venta?.detalles || [{
-      id_producto: null,
-      precio_unitario: 0,
-      cantidad: 1,
-      descuento: 0,
-      subtotal: 0,
-      esNuevo: true,
-    }],
-  })
+    tipo: "orden_compra",
+    descuento_general: 0,
+    detalles: [initialDetalleState], // Empezamos con una fila vacía para buscar
+  });
 
-  const handleSelectProducto = (producto: any) => {
-    const newDetalle = {
-      id_producto: producto.id,
-      nombre_producto: producto.nombre,
-      precio_unitario: producto.precio_final || producto.precio_lista,
-      cantidad: 1,
-      descuento: 0,
-      subtotal: producto.precio_final || producto.precio_lista,
-    }
-
-    setNuevaVenta(prev => {
-      const nuevosDetalles = [...prev.detalles]
-      const emptyRowIndex = nuevosDetalles.findIndex(d => d.esNuevo)
-      
-      if (emptyRowIndex !== -1) {
-        nuevosDetalles.splice(emptyRowIndex, 0, newDetalle)
+  // Efecto para resetear el formulario cuando se abre o se selecciona una venta para editar
+  useEffect(() => {
+    if (open) {
+      if (venta) {
+        // Lógica para cargar una venta existente para edición (a implementar)
+        // Por ahora, reseteamos al estado inicial
+        setNuevaVenta({
+          tipo: venta.tipo,
+          descuento_general: Number(venta.descuento_general),
+          // Mapeamos los detalles de la venta al formato del formulario
+          detalles: venta.detalles.map(d => ({
+            id_producto: d.producto.id,
+            nombre_producto: d.producto.nombre,
+            precio_unitario: Number(d.precio_unitario),
+            cantidad: d.cantidad,
+            descuento_individual: Number(d.descuento_individual),
+            subtotal: Number(d.subtotal)
+          }))
+        });
       } else {
-        nuevosDetalles.push(newDetalle)
+        // Reseteamos a un estado limpio para una nueva venta
+        setNuevaVenta({
+          tipo: "orden_compra",
+          descuento_general: 0,
+          detalles: [initialDetalleState],
+        });
       }
+    }
+  }, [open, venta]);
 
-      return { ...prev, detalles: nuevosDetalles }
-    })
-  }
+  // --- LÓGICA DE MANEJO DE ESTADO ---
 
-  const handleDetalleChange = (index: number, field: string, value: any) => {
+  const handleSelectProducto = (producto: Producto) => {
+    // Reemplaza la fila "nueva" con el producto seleccionado
+    // y añade otra fila "nueva" al final para la siguiente búsqueda.
     setNuevaVenta(prev => {
-      const nuevosDetalles = [...prev.detalles]
-      const detalle = { ...nuevosDetalles[index], [field]: value }
+      const nuevosDetalles = prev.detalles.filter(d => !d.esNuevo); // Quitamos la fila vacía
+      nuevosDetalles.push({
+        id_producto: producto.id,
+        nombre_producto: producto.nombre,
+        precio_unitario: Number(producto.precio_final || producto.precio_lista),
+        cantidad: 1,
+        descuento_individual: 0,
+        subtotal: Number(producto.precio_final || producto.precio_lista),
+      });
+      nuevosDetalles.push(initialDetalleState); // Agregamos una nueva fila vacía
+      return { ...prev, detalles: nuevosDetalles };
+    });
+  };
 
-      // Recalcular subtotal si cambian precio, cantidad o descuento
-      if (field === "precio_unitario" || field === "cantidad" || field === "descuento") {
-        const precio = Number(detalle.precio_unitario)
-        const cantidad = Number(detalle.cantidad)
-        const descuento = Number(detalle.descuento) || 0
-        const subtotalSinDescuento = precio * cantidad
-        detalle.subtotal = subtotalSinDescuento - (subtotalSinDescuento * (descuento / 100))
-      }
+  const handleDetalleChange = (index: number, field: keyof DetalleVentaForm, value: any) => {
+    setNuevaVenta(prev => {
+      const detallesActualizados = [...prev.detalles];
+      const detalleModificado = { ...detallesActualizados[index], [field]: value };
 
-      nuevosDetalles[index] = detalle
-      return { ...prev, detalles: nuevosDetalles }
-    })
-  }
+      // Recalcular el subtotal de la línea cada vez que algo cambia
+      const { precio_unitario, cantidad, descuento_individual } = detalleModificado;
+      const subtotalSinDescuento = precio_unitario * cantidad;
+      detalleModificado.subtotal = subtotalSinDescuento * (1 - (descuento_individual / 100));
+      
+      detallesActualizados[index] = detalleModificado;
+      return { ...prev, detalles: detallesActualizados };
+    });
+  };
 
   const handleRemoveDetalle = (index: number) => {
     setNuevaVenta(prev => {
-      const nuevosDetalles = [...prev.detalles]
-      nuevosDetalles.splice(index, 1)
-
-      if (nuevosDetalles.length === 0 || !nuevosDetalles.some(d => d.esNuevo)) {
-        nuevosDetalles.push({
-          id_producto: null,
-          precio_unitario: 0,
-          cantidad: 1,
-          descuento: 0,
-          subtotal: 0,
-          esNuevo: true,
-        })
+      const detallesFiltrados = prev.detalles.filter((_, i) => i !== index);
+      // Si hemos borrado todas las filas de productos, nos aseguramos de que quede una vacía
+      if (detallesFiltrados.every(d => !d.esNuevo)) {
+        detallesFiltrados.push(initialDetalleState);
       }
+      return { ...prev, detalles: detallesFiltrados };
+    });
+  };
 
-      return { ...prev, detalles: nuevosDetalles }
-    })
-  }
+  // --- CÁLCULO DE TOTALES ---
+  const totalVenta = useMemo(() => {
+    // Primero, sumamos todos los subtotales de las líneas de detalle (que ya tienen el descuento individual)
+    const subtotalBruto = nuevaVenta.detalles
+        .filter(d => !d.esNuevo) // Ignoramos la fila vacía para el cálculo
+        .reduce((sum, detalle) => sum + detalle.subtotal, 0);
+    
+    // Luego, aplicamos el descuento general
+    return subtotalBruto * (1 - (nuevaVenta.descuento_general / 100));
+  }, [nuevaVenta.detalles, nuevaVenta.descuento_general]);
 
-  const calcularTotal = () => {
-    const subtotal = nuevaVenta.detalles.reduce((sum, detalle) => sum + detalle.subtotal, 0)
-    return subtotal - (subtotal * (nuevaVenta.descuento_general / 100))
+
+  // --- FUNCIÓN DE ENVÍO ---
+  const handleFinalSubmit = () => {
+    // Filtramos los detalles para no enviar la fila vacía
+    const ventaParaEnviar = {
+      ...nuevaVenta,
+      detalles: nuevaVenta.detalles.filter(d => !d.esNuevo),
+    };
+    onSubmit(ventaParaEnviar);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>{venta ? "Editar Venta" : "Nueva Venta"}</DialogTitle>
           <DialogDescription>
-            {venta ? "Modifica los datos de la venta." : "Completa los datos para registrar una nueva venta."}
+            Agrega productos y define los descuentos para registrar la venta.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-1 gap-4">
+        <div className="flex-grow overflow-y-auto pr-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <Label htmlFor="tipo">Tipo de Venta</Label>
               <Select
                 value={nuevaVenta.tipo}
-                onValueChange={(value) => setNuevaVenta(prev => ({ ...prev, tipo: value }))}
+                onValueChange={(value: 'orden_compra' | 'factura_b') => setNuevaVenta(prev => ({ ...prev, tipo: value }))}
               >
-                <SelectTrigger id="tipo">
-                  <SelectValue placeholder="Selecciona un tipo" />
-                </SelectTrigger>
+                <SelectTrigger id="tipo"><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="orden_compra">Orden de compra</SelectItem>
                   <SelectItem value="factura_b">Factura electrónica B</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-2">
-              <Label>Buscar Producto</Label>
-              <ProductSearch 
-                onSelect={handleSelectProducto} 
-                onSearch={onSearchProductos} 
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Detalle de Venta</Label>
-              <DetalleVentaTable
-                detalles={nuevaVenta.detalles}
-                onDetalleChange={handleDetalleChange}
-                onRemoveDetalle={handleRemoveDetalle}
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="descuento_general">Descuento General (%)</Label>
               <Input
                 id="descuento_general"
                 type="number"
-                min="0"
-                max="100"
+                min="0" max="100"
                 value={nuevaVenta.descuento_general}
-                onChange={(e) => setNuevaVenta(prev => ({
-                  ...prev,
-                  descuento_general: Number(e.target.value) || 0
-                }))}
+                onChange={(e) => setNuevaVenta(prev => ({...prev, descuento_general: Number(e.target.value) || 0 }))}
               />
             </div>
+          </div>
+          
+          <div className="mt-6 space-y-2">
+            <Label>Buscar y Agregar Productos</Label>
+            <ProductSearch 
+              onSelect={handleSelectProducto} 
+              onSearch={onSearchProductos} 
+            />
+          </div>
 
-            <div className="flex justify-end text-lg font-bold">
-              Total: ${calcularTotal().toLocaleString()}
-            </div>
+          <div className="mt-4 space-y-2">
+            <Label>Detalle de Venta</Label>
+            <DetalleVentaTable
+              detalles={nuevaVenta.detalles}
+              onDetalleChange={handleDetalleChange}
+              onRemoveDetalle={handleRemoveDetalle}
+            />
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={() => onSubmit(nuevaVenta)}>
-            {venta ? "Actualizar" : "Guardar"} Venta
-          </Button>
+        <DialogFooter className="pt-4 border-t">
+          <div className="flex justify-between items-center w-full">
+            <div className="text-2xl font-bold">
+              Total: ${totalVenta.toFixed(2)}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleFinalSubmit}>
+                {venta ? "Actualizar" : "Guardar"} Venta
+              </Button>
+            </div>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

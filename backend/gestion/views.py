@@ -86,6 +86,19 @@ class VentaViewSet(viewsets.ModelViewSet):
     queryset = Venta.objects.all().order_by('-fecha_y_hora')
     serializer_class = VentaSerializer
 
+    @action(detail=False, methods=['get'])
+    def ultimas(self, request):
+        """
+        Devuelve las 5 ventas más recientes.
+        Endpoint: /api/ventas/ultimas/
+        """
+        # Ordenamos por fecha y hora descendente y tomamos las primeras 5
+        ultimas_ventas = Venta.objects.order_by('-fecha_y_hora')[:5]
+        # Usamos el serializador de la clase para convertir los datos
+        serializer = self.get_serializer(ultimas_ventas, many=True)
+        # Devolvemos la respuesta
+        return Response(serializer.data)
+
 class VentaDetalleViewSet(viewsets.ModelViewSet):
     queryset = VentaDetalle.objects.all()
     serializer_class = VentaDetalleSerializer

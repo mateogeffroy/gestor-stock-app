@@ -11,15 +11,22 @@ interface PaginatedResponse<T> {
 }
 
 export const fetchVentas = async (): Promise<PaginatedResponse<Venta>> => {
-  // Ahora la función devuelve el objeto paginado completo
   const data = await fetchFromAPI('/api/ventas/');
   return data;
 };
 
+// --- INICIO DEL CAMBIO ---
+// Nueva función para obtener las últimas 5 ventas
+export const fetchUltimasVentas = async (): Promise<Venta[]> => {
+  // Llamamos al nuevo endpoint que no es paginado
+  const data = await fetchFromAPI('/api/ventas/ultimas/');
+  return data;
+};
+// --- FIN DEL CAMBIO ---
+
 export const searchProductos = async (term: string) => {
   if (!term) return [];
   const data = await fetchFromAPI(`/api/productos/?search=${term}`);
-  // La búsqueda de productos también es paginada
   return data.results || []; 
 };
 
