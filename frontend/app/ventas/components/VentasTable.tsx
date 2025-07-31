@@ -3,17 +3,21 @@
 import { Venta } from "../types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Edit, Trash2, Loader2 } from "lucide-react"
+// --- 1. Importamos el ícono del ojo ---
+import { Edit, Trash2, Eye, Loader2 } from "lucide-react" 
 import { motion, AnimatePresence } from "framer-motion"
 
 interface VentasTableProps {
   ventas: Venta[]
+  // --- 2. Agregamos la nueva propiedad para el evento de clic ---
+  onView: (venta: Venta) => void
   onEdit: (venta: Venta) => void
   onDelete: (id: number) => void
   isLoading: boolean
 }
 
-export function VentasTable({ ventas, onEdit, onDelete, isLoading }: VentasTableProps) {
+// --- 3. Actualizamos la desestructuración de props ---
+export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: VentasTableProps) {
   const getEstadoColor = (estado: string) => {
     switch (estado) {
       case "Completada": return "bg-green-100 text-green-800"
@@ -56,18 +60,22 @@ export function VentasTable({ ventas, onEdit, onDelete, isLoading }: VentasTable
                 className="border-b"
               >
                 <TableCell className="font-medium">{venta.id}</TableCell>
-                <TableCell>{new Date(venta.fecha_y_hora).toLocaleString()}</TableCell>
+                <TableCell>{new Date(venta.fecha_y_hora).toLocaleString('es-AR')}</TableCell>
                 <TableCell>
                   {venta.tipo === "orden_compra" ? "Orden de compra" : 
                    venta.tipo === "factura_b" ? "Factura electrónica B" : venta.tipo}
                 </TableCell>
-                <TableCell>${venta.importe_total.toLocaleString()}</TableCell>
+                <TableCell>${Number(venta.importe_total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</TableCell>
                 <TableCell>
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEstadoColor(venta.estado)}`}>
                     {venta.estado}
                   </span>
                 </TableCell>
-                <TableCell className="text-right flex gap-2 justify-end">
+                <TableCell className="text-right flex gap-1 justify-end">
+                  {/* --- 4. Agregamos el nuevo botón de "Ver Detalle" --- */}
+                  <Button variant="ghost" size="icon" onClick={() => onView(venta)}>
+                    <Eye className="h-4 w-4 text-blue-500" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => onEdit(venta)}>
                     <Edit className="h-4 w-4" />
                   </Button>

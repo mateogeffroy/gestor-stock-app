@@ -42,7 +42,7 @@ export default function Home() {
     const numericDiscount = parseFloat(discount)
 
     if (!isNaN(numericTotal) && !isNaN(numericDiscount)) {
-      const result = numericTotal - (numericTotal * (100 - numericDiscount) / 100)
+      const result = numericTotal * (100 - numericDiscount) / 100
       setDiscountedTotal(result)
     } else {
       setDiscountedTotal(numericTotal || 0)
