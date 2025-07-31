@@ -1,5 +1,6 @@
 # backend/gestion/serializers.py
 
+from decimal import Decimal # <<< 1. IMPORTAMOS DECIMAL
 from rest_framework import serializers
 from django.db import transaction
 from .models import Producto, Caja, Venta, VentaDetalle
@@ -15,18 +16,15 @@ class CajaSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class VentaDetalleSerializer(serializers.ModelSerializer):
-    # --- CAMBIO CLAVE: Eliminamos 'write_only=True' del id_producto ---
-    # y lo movemos a su propia definición para que se use al escribir.
+    producto = ProductoSerializer(read_only=True)
     id_producto = serializers.PrimaryKeyRelatedField(
-        queryset=Producto.objects.all(), source='producto'
+        queryset=Producto.objects.all(), source='producto', write_only=True
     )
-    # Para la lectura (cuando devolvemos datos), mostramos el objeto producto completo.
-    producto_data = ProductoSerializer(source='producto', read_only=True)
 
     class Meta:
         model = VentaDetalle
-        fields = ['id', 'id_producto', 'producto_data', 'cantidad', 'precio_unitario', 'subtotal']
-
+        fields = ['id', 'producto', 'id_producto', 'cantidad', 'precio_unitario', 'descuento_individual', 'subtotal']
+        read_only_fields = ['subtotal']
 
 class VentaSerializer(serializers.ModelSerializer):
     detalles = VentaDetalleSerializer(many=True)
@@ -44,30 +42,39 @@ class VentaSerializer(serializers.ModelSerializer):
         descuento_general = validated_data.get('descuento_general', 0)
 
         with transaction.atomic():
-            subtotal_bruto = sum(item['subtotal'] for item in detalles_data)
-            
-            if descuento_general > 0:
-                # Ojo: Asegurarse que descuento_general sea un número para el cálculo
-                importe_final = subtotal_bruto * (1 - (float(descuento_general) / 100))
-            else:
-                importe_final = subtotal_bruto
-            
-            validated_data['importe_total'] = importe_final
-            
-            venta = Venta.objects.create(**validated_data)
+            venta = Venta.objects.create(importe_total=0, **validated_data)
+            total_venta_final = Decimal('0.0') # Usamos Decimal para el total
 
             for detalle_data in detalles_data:
                 producto_instancia = detalle_data['producto']
                 cantidad_vendida = detalle_data['cantidad']
+                precio_unitario = detalle_data['precio_unitario']
+                descuento_individual = detalle_data.get('descuento_individual', 0)
+
+                subtotal_sin_descuento = precio_unitario * cantidad_vendida
+                descuento_total_linea = float(descuento_individual) + float(descuento_general)
                 
+                # --- 2. CORREGIMOS EL CÁLCULO ---
+                # Convertimos el factor de descuento a Decimal antes de multiplicar
+                factor_descuento = Decimal(1 - (descuento_total_linea / 100))
+                subtotal_final_linea = subtotal_sin_descuento * factor_descuento
+                # --- FIN DEL CAMBIO ---
+                
+                total_venta_final += subtotal_final_linea
+
                 if producto_instancia.stock < cantidad_vendida:
-                    raise serializers.ValidationError(
-                        f"No hay stock suficiente para '{producto_instancia.nombre}'. Stock disponible: {producto_instancia.stock}"
-                    )
+                    raise serializers.ValidationError(f"Stock insuficiente para '{producto_instancia.nombre}'.")
                 
                 producto_instancia.stock -= cantidad_vendida
                 producto_instancia.save()
 
-                VentaDetalle.objects.create(venta=venta, **detalle_data)
+                VentaDetalle.objects.create(
+                    venta=venta,
+                    subtotal=subtotal_final_linea,
+                    **detalle_data
+                )
+            
+            venta.importe_total = total_venta_final
+            venta.save()
         
         return venta
