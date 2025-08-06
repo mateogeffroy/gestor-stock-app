@@ -3,27 +3,36 @@
 import { Venta } from "../types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-// --- 1. Importamos el ícono del ojo ---
 import { Edit, Trash2, Eye, Loader2 } from "lucide-react" 
 import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/lib/utils" // Importamos cn para clases condicionales
 
 interface VentasTableProps {
   ventas: Venta[]
-  // --- 2. Agregamos la nueva propiedad para el evento de clic ---
   onView: (venta: Venta) => void
   onEdit: (venta: Venta) => void
   onDelete: (id: number) => void
   isLoading: boolean
 }
 
-// --- 3. Actualizamos la desestructuración de props ---
 export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: VentasTableProps) {
-  const getEstadoColor = (estado: string) => {
+  const getEstadoInfo = (estado: string) => {
     switch (estado) {
-      case "Completada": return "bg-green-100 text-green-800"
-      case "Pendiente": return "bg-yellow-100 text-yellow-800"
-      case "Cancelada": return "bg-red-100 text-red-800"
-      default: return "bg-gray-100 text-gray-800"
+      case "pendiente": 
+        return {
+          label: "Pendiente",
+          color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400"
+        };
+      case "cerrada": 
+        return {
+          label: "Cerrada",
+          color: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400"
+        };
+      default: 
+        return {
+          label: estado.charAt(0).toUpperCase() + estado.slice(1), // Capitalizamos el estado
+          color: "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400"
+        };
     }
   }
 
@@ -50,46 +59,56 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
         </TableHeader>
         <TableBody>
           <AnimatePresence>
-            {ventas.map((venta) => (
-              <motion.tr
-                key={venta.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="border-b"
-              >
-                <TableCell className="font-medium">{venta.id}</TableCell>
-                <TableCell>{new Date(venta.fecha_y_hora).toLocaleString('es-AR')}</TableCell>
-                <TableCell>
-                  {venta.tipo === "orden_compra" ? "Orden de compra" : 
-                   venta.tipo === "factura_b" ? "Factura electrónica B" : venta.tipo}
-                </TableCell>
-                <TableCell>${Number(venta.importe_total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</TableCell>
-                <TableCell>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEstadoColor(venta.estado)}`}>
-                    {venta.estado}
-                  </span>
-                </TableCell>
-                <TableCell className="text-right flex gap-1 justify-end">
-                  {/* --- 4. Agregamos el nuevo botón de "Ver Detalle" --- */}
-                  <Button variant="ghost" size="icon" onClick={() => onView(venta)}>
-                    <Eye className="h-4 w-4 text-blue-500" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={() => onEdit(venta)}>
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => onDelete(venta.id)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TableCell>
-              </motion.tr>
-            ))}
+            {ventas.map((venta) => {
+              const estadoInfo = getEstadoInfo(venta.estado);
+              const isCerrada = venta.estado === 'cerrada';
+
+              return (
+                <motion.tr
+                  key={venta.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="border-b"
+                >
+                  <TableCell className="font-medium">{venta.id}</TableCell>
+                  <TableCell>{new Date(venta.fecha_y_hora).toLocaleString('es-AR')}</TableCell>
+                  <TableCell>
+                    {venta.tipo === "orden_compra" ? "Orden de compra" : 
+                     venta.tipo === "factura_b" ? "Factura electrónica B" : venta.tipo}
+                  </TableCell>
+                  <TableCell>${Number(venta.importe_total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</TableCell>
+                  <TableCell>
+                    <span className={cn("px-2 py-1 rounded-full text-xs font-medium", estadoInfo.color)}>
+                      {estadoInfo.label}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-right flex gap-1 justify-end">
+                    <Button variant="ghost" size="icon" onClick={() => onView(venta)}>
+                      <Eye className="h-4 w-4 text-blue-500" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => onEdit(venta)}
+                      disabled={isCerrada} // Deshabilitamos el botón si la venta está cerrada
+                    >
+                      <Edit className={cn("h-4 w-4", isCerrada && "text-muted-foreground")} />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => onDelete(venta.id)}
+                      disabled={isCerrada} // Deshabilitamos el botón si la venta está cerrada
+                      className={cn("text-red-600 hover:text-red-800", isCerrada && "hover:bg-transparent")}
+                    >
+                      <Trash2 className={cn("h-4 w-4", isCerrada && "text-muted-foreground")} />
+                    </Button>
+                  </TableCell>
+                </motion.tr>
+              )
+            })}
           </AnimatePresence>
         </TableBody>
       </Table>

@@ -1,5 +1,3 @@
-// frontend/lib/api.ts
-
 const API_URL = "http://127.0.0.1:8000";
 
 export async function fetchFromAPI(endpoint: string, options: RequestInit = {}) {
@@ -14,22 +12,19 @@ export async function fetchFromAPI(endpoint: string, options: RequestInit = {}) 
   });
 
   // --- INICIO DEL CAMBIO ---
-  // Leemos el cuerpo de la respuesta primero para poder analizarlo
+  // Si la respuesta es 204 (No Content), la operación fue exitosa pero no hay cuerpo.
+  // Devolvemos un objeto vacío para evitar el error de JSON.
+  if (response.status === 204) {
+    return {}; 
+  }
+  // --- FIN DEL CAMBIO ---
+
   const body = await response.json();
 
-  // Si la respuesta no es OK (ej: error 400, 500), lanzamos un error con el mensaje del backend si existe
   if (!response.ok) {
-    // Intentamos obtener un mensaje de error más detallado del cuerpo de la respuesta
     const errorMessage = body.detail || body.message || JSON.stringify(body) || response.statusText;
     throw new Error(`Error en la petición a la API: ${errorMessage}`);
   }
 
-  // Para métodos como DELETE que devuelven 204 No Content, el body puede estar vacío
-  if (response.status === 204) {
-    return;
-  }
-  
-  // Devolvemos el cuerpo completo de la respuesta (que puede contener datos y 'warnings')
   return body;
-  // --- FIN DEL CAMBIO ---
 }

@@ -202,7 +202,7 @@ export default function CajasPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cerrar caja del día?</AlertDialogTitle>
-            <AlertDialogDescription>Esta acción cerrará la caja con un total de ${resumenDiario.totalDia.toLocaleString('es-AR')}. Todas las ventas pendientes serán asociadas a esta caja.</AlertDialogDescription>
+            <AlertDialogDescription>Esta acción cerrará la caja con un total de ${resumenDiario.totalDia.toLocaleString('es-AR')}. Todas las ventas pendientes serán asociadas a esta caja y a partir de ese momento no podrán ser editadas.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleCerrarCaja}>Confirmar</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>

@@ -23,11 +23,27 @@ class Venta(models.Model):
         ORDEN_COMPRA = 'orden_compra', 'Orden de Compra'
         FACTURA_B = 'factura_b', 'Factura B'
 
+    # --- INICIO DEL CAMBIO ---
+    class EstadoVenta(models.TextChoices):
+        PENDIENTE = 'pendiente', 'Pendiente'
+        CERRADA = 'cerrada', 'Cerrada'
+        # Podríamos agregar más estados a futuro si es necesario
+    # --- FIN DEL CAMBIO ---
+
     importe_total = models.DecimalField(max_digits=12, decimal_places=2)
     fecha_y_hora = models.DateTimeField(auto_now_add=True)
     caja = models.ForeignKey(Caja, on_delete=models.SET_NULL, null=True, blank=True)
     tipo = models.CharField(max_length=20, choices=TipoVenta.choices, default=TipoVenta.ORDEN_COMPRA)
-    estado = models.CharField(max_length=50, default='completada')
+    
+    # --- INICIO DEL CAMBIO ---
+    # Usamos las nuevas opciones y cambiamos el valor por defecto
+    estado = models.CharField(
+        max_length=50, 
+        choices=EstadoVenta.choices, 
+        default=EstadoVenta.PENDIENTE
+    )
+    # --- FIN DEL CAMBIO ---
+
     descuento_general = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     redondeo = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
 
@@ -39,7 +55,6 @@ class VentaDetalle(models.Model):
     producto = models.ForeignKey(Producto, on_delete=models.SET_NULL, null=True)
     cantidad = models.IntegerField()
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=2)
-    # --- CAMBIO CLAVE: Agregamos el campo para el descuento individual ---
     descuento_individual = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
 
