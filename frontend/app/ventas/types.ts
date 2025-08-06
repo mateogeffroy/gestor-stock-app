@@ -31,23 +31,22 @@ export interface Venta {
     detalles: DetalleVenta[];
 }
 
-// --- INICIO DEL CAMBIO ---
-// Tipos para el estado del formulario en el cliente
 export interface DetalleVentaForm {
-    id_producto: number | null;
-    nombre_producto?: string;
-    precio_unitario: number;
-    cantidad: number;
-    // Agregamos el descuento individual al estado del formulario
-    descuento_individual: number; 
-    subtotal: number;
-    // El campo 'esNuevo' es solo para la lógica del UI, no se envía al backend
-    esNuevo?: boolean; 
+  // --- INICIO DEL CAMBIO ---
+  // Añadimos un ID único para cada línea del formulario, para usarlo como 'key' en React.
+  lineItemId: number; 
+  // --- FIN DEL CAMBIO ---
+  id_producto: number | null;
+  nombre_producto?: string;
+  precio_unitario: number;
+  cantidad: number;
+  descuento_individual: number; 
+  subtotal: number;
+  esNuevo?: boolean; 
 }
 
 export interface NuevaVentaState {
-    tipo: 'orden_compra' | 'factura_b';
-    descuento_general: number;
-    detalles: DetalleVentaForm[];
+  tipo: 'orden_compra' | 'factura_b';
+  descuento_general: number;
+  detalles: DetalleVentaForm[];
 }
-// --- FIN DEL CAMBIO ---

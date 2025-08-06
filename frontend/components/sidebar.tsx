@@ -1,20 +1,19 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-// 1. IMPORTAMOS EL NUEVO ÍCONO
 import { Home, ShoppingCart, Package, DollarSign, Menu, X } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image" // 1. Importamos el componente Image
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { motion, AnimatePresence } from "framer-motion"
 
-// 2. AGREGAMOS LA RUTA "INICIO" AL PRINCIPIO DE LA LISTA
 const routes = [
   {
     label: "Inicio",
     icon: Home,
-    href: "/", // La ruta raíz
+    href: "/",
     color: "text-sky-500",
   },
   {
@@ -41,7 +40,38 @@ export default function Sidebar() {
   const pathname = usePathname()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
 
-  // El resto del componente no necesita cambios...
+  const SidebarContent = () => (
+    <>
+      <div className="flex h-20 items-center px-6">
+        {/* 2. Reemplazamos <img> por <Image /> */}
+        <Image 
+          src="/icon.png" 
+          alt="La Cuerda Bebidas Logo"
+          width={32} // Ancho en píxeles
+          height={32} // Alto en píxeles
+          className="mr-3" // Mantenemos el margen
+        />
+        <h1 className="text-xl font-bold">La Cuerda Bebidas</h1>
+      </div>
+      <div className="flex flex-col gap-2 px-3">
+        {routes.map((route) => (
+          <Link
+            key={route.href}
+            href={route.href}
+            onClick={() => isMobileOpen && setIsMobileOpen(false)}
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+              pathname === route.href ? "bg-accent text-accent-foreground" : "text-muted-foreground",
+            )}
+          >
+            <route.icon className={cn("h-5 w-5", route.color)} />
+            {route.label}
+          </Link>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <>
       <Button
@@ -53,6 +83,7 @@ export default function Sidebar() {
         {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </Button>
 
+      {/* Sidebar para móvil */}
       <AnimatePresence>
         {isMobileOpen && (
           <motion.div
@@ -67,49 +98,15 @@ export default function Sidebar() {
               className="fixed left-0 top-0 h-full w-72 bg-background shadow-lg"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex h-20 items-center px-6">
-                <h1 className="text-xl font-bold">La Cuerda Bebidas</h1>
-              </div>
-              <div className="flex flex-col gap-2 px-3">
-                {routes.map((route) => (
-                  <Link
-                    key={route.href}
-                    href={route.href}
-                    onClick={() => setIsMobileOpen(false)}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                      pathname === route.href ? "bg-accent text-accent-foreground" : "text-muted-foreground",
-                    )}
-                  >
-                    <route.icon className={cn("h-5 w-5", route.color)} />
-                    {route.label}
-                  </Link>
-                ))}
-              </div>
+              <SidebarContent />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* Sidebar para escritorio */}
       <div className="hidden h-full w-72 flex-col border-r bg-background md:flex">
-        <div className="flex h-20 items-center px-6">
-          <h1 className="text-xl font-bold">La Cuerda Bebidas</h1>
-        </div>
-        <div className="flex flex-col gap-2 px-3">
-          {routes.map((route) => (
-            <Link
-              key={route.href}
-              href={route.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                pathname === route.href ? "bg-accent text-accent-foreground" : "text-muted-foreground",
-              )}
-            >
-              <route.icon className={cn("h-5 w-5", route.color)} />
-              {route.label}
-            </Link>
-          ))}
-        </div>
+        <SidebarContent />
       </div>
     </>
   )

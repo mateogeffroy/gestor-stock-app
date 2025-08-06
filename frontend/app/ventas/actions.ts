@@ -42,3 +42,10 @@ export const deleteVenta = async (id: number) => {
     method: 'DELETE'
   });
 };
+
+export const updateVenta = async (id: number, ventaData: any) => {
+  return await fetchFromAPI(`/api/ventas/${id}/`, {
+    method: 'PUT',
+    body: JSON.stringify(ventaData)
+  });
+};

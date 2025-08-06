@@ -1,13 +1,9 @@
-# gestion/views.py (Versión con acciones personalizadas)
-
-from rest_framework import viewsets, filters, status
+from rest_framework import viewsets, filters, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
 from django.db import transaction
 from django.db.models import Sum, Q, F
-
-# Importamos todos los modelos y serializadores
 from .models import Producto, Caja, Venta, VentaDetalle
 from .serializers import ProductoSerializer, CajaSerializer, VentaSerializer, VentaDetalleSerializer
 
@@ -18,27 +14,18 @@ class ProductoViewSet(viewsets.ModelViewSet):
     search_fields = ['nombre', 'codigo_barras']
 
 class CajaViewSet(viewsets.ModelViewSet):
-    # El queryset principal ahora ordena por fecha de cierre descendente
     queryset = Caja.objects.all().order_by('-fecha_y_hora_cierre')
     serializer_class = CajaSerializer
 
     @action(detail=False, methods=['get'])
     def resumen_diario(self, request):
-        """
-        Calcula el total de ventas del día que aún no han sido asignadas a una caja.
-        URL: /api/cajas/resumen_diario/
-        """
-        ventas_sin_caja = Venta.objects.filter(caja__isnull=True)
-        
-        # Usamos aggregate para sumar los importes filtrando por tipo
+        ventas_sin_caja = Venta.objects.filter(caja__isnull=True, estado=Venta.EstadoVenta.PENDIENTE)
         resumen = ventas_sin_caja.aggregate(
             totalOrdenesCompra=Sum('importe_total', filter=Q(tipo='orden_compra')),
             totalFacturasB=Sum('importe_total', filter=Q(tipo='factura_b'))
         )
-        
         total_oc = resumen['totalOrdenesCompra'] or 0
         total_fb = resumen['totalFacturasB'] or 0
-        
         return Response({
             'totalOrdenesCompra': total_oc,
             'totalFacturasB': total_fb,
@@ -46,41 +33,26 @@ class CajaViewSet(viewsets.ModelViewSet):
         })
 
     @action(detail=False, methods=['post'])
-    @transaction.atomic # Asegura que todas las operaciones se completen o ninguna
+    @transaction.atomic
     def cerrar_caja(self, request):
-        """
-        Crea una nueva caja con el total de las ventas pendientes y las asocia.
-        URL: /api/cajas/cerrar_caja/
-        """
-        ventas_a_cerrar = Venta.objects.filter(caja__isnull=True)
-        
+        ventas_a_cerrar = Venta.objects.filter(caja__isnull=True, estado=Venta.EstadoVenta.PENDIENTE)
         if not ventas_a_cerrar.exists():
             return Response({'message': 'No hay ventas pendientes para cerrar.'}, status=status.HTTP_400_BAD_REQUEST)
-
         total_recaudado = ventas_a_cerrar.aggregate(total=Sum('importe_total'))['total'] or 0
-        
         nueva_caja = Caja.objects.create(
             total_recaudado=total_recaudado,
             fecha_y_hora_cierre=timezone.now()
         )
-        
-        ventas_a_cerrar.update(caja=nueva_caja)
-        
+        ventas_a_cerrar.update(caja=nueva_caja, estado=Venta.EstadoVenta.CERRADA)
         serializer = self.get_serializer(nueva_caja)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'])
     def ventas(self, request, pk=None):
-        """
-        Devuelve todas las ventas asociadas a una caja específica.
-        URL: /api/cajas/1/ventas/
-        """
         caja = self.get_object()
-        # Usamos la relación inversa 'venta_set' para obtener las ventas
         ventas = caja.venta_set.all().order_by('fecha_y_hora')
         serializer = VentaSerializer(ventas, many=True)
         return Response(serializer.data)
-
 
 class VentaViewSet(viewsets.ModelViewSet):
     queryset = Venta.objects.all().order_by('-fecha_y_hora')
@@ -88,16 +60,25 @@ class VentaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def ultimas(self, request):
-        """
-        Devuelve las 5 ventas más recientes.
-        Endpoint: /api/ventas/ultimas/
-        """
-        # Ordenamos por fecha y hora descendente y tomamos las primeras 5
         ultimas_ventas = Venta.objects.order_by('-fecha_y_hora')[:5]
-        # Usamos el serializador de la clase para convertir los datos
         serializer = self.get_serializer(ultimas_ventas, many=True)
-        # Devolvemos la respuesta
         return Response(serializer.data)
+
+    def perform_update(self, serializer):
+        if serializer.instance.estado == Venta.EstadoVenta.CERRADA:
+            raise serializers.ValidationError("No se puede editar una venta que ya está cerrada.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.estado == Venta.EstadoVenta.CERRADA:
+            raise serializers.ValidationError("No se puede eliminar una venta que ya está cerrada.")
+        with transaction.atomic():
+            for detalle in instance.detalles.all():
+                producto = detalle.producto
+                if producto:
+                    producto.stock += detalle.cantidad
+                    producto.save()
+            instance.delete()
 
 class VentaDetalleViewSet(viewsets.ModelViewSet):
     queryset = VentaDetalle.objects.all()

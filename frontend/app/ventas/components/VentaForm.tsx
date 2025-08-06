@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Venta, NuevaVentaState, DetalleVentaForm } from "../types"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ProductSearch } from "./ProductSearch"
 import { DetalleVentaTable } from "./DetalleVentaTable"
-import { Producto } from "../types" // Importamos el tipo Producto
+import { Producto } from "../types"
 
 interface VentaFormProps {
   open: boolean
@@ -19,8 +19,8 @@ interface VentaFormProps {
   onSearchProductos: (term: string) => Promise<Producto[]>
 }
 
-// Estado inicial para un nuevo detalle en el formulario
 const initialDetalleState: DetalleVentaForm = {
+  lineItemId: 0,
   id_producto: null,
   nombre_producto: '',
   precio_unitario: 0,
@@ -31,24 +31,22 @@ const initialDetalleState: DetalleVentaForm = {
 }
 
 export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProductos }: VentaFormProps) {
+  const detailIdCounter = useRef(1);
   
   const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>({
     tipo: "orden_compra",
     descuento_general: 0,
-    detalles: [initialDetalleState], // Empezamos con una fila vacía para buscar
+    detalles: [initialDetalleState],
   });
 
-  // Efecto para resetear el formulario cuando se abre o se selecciona una venta para editar
   useEffect(() => {
     if (open) {
       if (venta) {
-        // Lógica para cargar una venta existente para edición (a implementar)
-        // Por ahora, reseteamos al estado inicial
         setNuevaVenta({
           tipo: venta.tipo,
           descuento_general: Number(venta.descuento_general),
-          // Mapeamos los detalles de la venta al formato del formulario
           detalles: venta.detalles.map(d => ({
+            lineItemId: detailIdCounter.current++, // Asignamos un ID único al cargar
             id_producto: d.producto.id,
             nombre_producto: d.producto.nombre,
             precio_unitario: Number(d.precio_unitario),
@@ -58,24 +56,22 @@ export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProduct
           }))
         });
       } else {
-        // Reseteamos a un estado limpio para una nueva venta
+        // Reseteamos el contador y el estado para una nueva venta
+        detailIdCounter.current = 1;
         setNuevaVenta({
           tipo: "orden_compra",
           descuento_general: 0,
-          detalles: [initialDetalleState],
+          detalles: [{...initialDetalleState, lineItemId: 0}],
         });
       }
     }
   }, [open, venta]);
 
-  // --- LÓGICA DE MANEJO DE ESTADO ---
-
   const handleSelectProducto = (producto: Producto) => {
-    // Reemplaza la fila "nueva" con el producto seleccionado
-    // y añade otra fila "nueva" al final para la siguiente búsqueda.
     setNuevaVenta(prev => {
-      const nuevosDetalles = prev.detalles.filter(d => !d.esNuevo); // Quitamos la fila vacía
+      const nuevosDetalles = prev.detalles.filter(d => !d.esNuevo);
       nuevosDetalles.push({
+        lineItemId: detailIdCounter.current++, // Asignamos un ID único a la nueva línea
         id_producto: producto.id,
         nombre_producto: producto.nombre,
         precio_unitario: Number(producto.precio_final || producto.precio_lista),
@@ -83,7 +79,8 @@ export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProduct
         descuento_individual: 0,
         subtotal: Number(producto.precio_final || producto.precio_lista),
       });
-      nuevosDetalles.push(initialDetalleState); // Agregamos una nueva fila vacía
+      // La nueva fila vacía también obtiene un ID único
+      nuevosDetalles.push({ ...initialDetalleState, lineItemId: detailIdCounter.current++ }); 
       return { ...prev, detalles: nuevosDetalles };
     });
   };
@@ -93,7 +90,6 @@ export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProduct
       const detallesActualizados = [...prev.detalles];
       const detalleModificado = { ...detallesActualizados[index], [field]: value };
 
-      // Recalcular el subtotal de la línea cada vez que algo cambia
       const { precio_unitario, cantidad, descuento_individual } = detalleModificado;
       const subtotalSinDescuento = precio_unitario * cantidad;
       detalleModificado.subtotal = subtotalSinDescuento * (1 - (descuento_individual / 100));
@@ -106,29 +102,22 @@ export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProduct
   const handleRemoveDetalle = (index: number) => {
     setNuevaVenta(prev => {
       const detallesFiltrados = prev.detalles.filter((_, i) => i !== index);
-      // Si hemos borrado todas las filas de productos, nos aseguramos de que quede una vacía
-      if (detallesFiltrados.every(d => !d.esNuevo)) {
-        detallesFiltrados.push(initialDetalleState);
+      if (detallesFiltrados.length === 0 || detallesFiltrados.every(d => !d.esNuevo)) {
+        detallesFiltrados.push({ ...initialDetalleState, lineItemId: detailIdCounter.current++ });
       }
       return { ...prev, detalles: detallesFiltrados };
     });
   };
 
-  // --- CÁLCULO DE TOTALES ---
   const totalVenta = useMemo(() => {
-    // Primero, sumamos todos los subtotales de las líneas de detalle (que ya tienen el descuento individual)
     const subtotalBruto = nuevaVenta.detalles
-        .filter(d => !d.esNuevo) // Ignoramos la fila vacía para el cálculo
+        .filter(d => !d.esNuevo)
         .reduce((sum, detalle) => sum + detalle.subtotal, 0);
     
-    // Luego, aplicamos el descuento general
     return subtotalBruto * (1 - (nuevaVenta.descuento_general / 100));
   }, [nuevaVenta.detalles, nuevaVenta.descuento_general]);
 
-
-  // --- FUNCIÓN DE ENVÍO ---
   const handleFinalSubmit = () => {
-    // Filtramos los detalles para no enviar la fila vacía
     const ventaParaEnviar = {
       ...nuevaVenta,
       detalles: nuevaVenta.detalles.filter(d => !d.esNuevo),
