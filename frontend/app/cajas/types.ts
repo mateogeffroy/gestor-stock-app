@@ -1,24 +1,39 @@
 // frontend/app/cajas/types.ts
 
-import { Venta } from "@/app/ventas/types"; // Reutilizamos el tipo Venta
-
-// Define la estructura de una Caja que viene del backend
+// Estructura de la tabla 'caja' en Supabase
 export interface Caja {
   id: number;
-  total_recaudado: string; // Django envía los decimales como string
-  fecha_y_hora_cierre: string;
+  fecha: string; // YYYY-MM-DD
+  total: number; // Numeric en BD -> number en JS
 }
 
-// Define la estructura del resumen diario que viene del backend
+// Estructura para el resumen en pantalla (calculado en frontend)
 export interface ResumenCaja {
   totalOrdenesCompra: number;
   totalFacturasB: number;
   totalDia: number;
+  cantidadVentas?: number;
 }
 
-// Define la estructura de una Venta con sus detalles para mostrarla en el diálogo
-// Es similar al tipo Venta, pero nos aseguramos de que incluya los detalles
-export interface VentaConDetalles extends Venta {
-  // Ya está incluido en el tipo Venta, pero lo hacemos explícito
-  detalles: any[]; // Puedes definir un tipo más estricto para DetalleVenta si lo deseas
+// Estructura para el detalle de productos dentro de una venta
+export interface DetalleProducto {
+  cantidad: number;
+  subtotal: number;
+  producto: {
+    nombre: string;
+    precio_lista: number;
+  };
+}
+
+// Estructura compleja para el Acordeón del Modal (Venta + Detalles + Tipo)
+export interface VentaConDetalles {
+  id: number;
+  fecha: string;
+  hora: string;
+  total: number;
+  id_tipo_venta: number;
+  tipo_venta?: {
+    descripcion: string;
+  };
+  venta_detalle: DetalleProducto[];
 }

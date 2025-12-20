@@ -1,69 +1,98 @@
-// frontend/services/producto-service.ts
+import { supabase } from "@/lib/supabase";
 
-import { fetchFromAPI } from "@/lib/api";
-
-// --- CAMBIO 1: Ajustamos los tipos para que coincidan con el JSON de Django ---
-// Los campos DecimalField se reciben como strings.
+// Definimos la interfaz basada en tu NUEVA tabla 'producto'
 export interface Producto {
   id: number;
   nombre: string;
+  codigo: string | null;      // Antes codigo_barras
+  precio_lista: number;       // Antes precio_final / precio
+  precio_costo: number;
+  porcentaje_utilidad: number;
   stock: number;
-  precio_lista: string;
-  utilidad_porcentual: string | null;
-  precio_final: string | null;
-  codigo_barras: string | null;
 }
 
-// Para crear un producto, los datos que se envían sí pueden ser numéricos.
-export type ProductoInsert = {
-    nombre: string;
-    stock: number;
-    precio_lista: number;
-    utilidad_porcentual: number | null;
-    precio_final: number | null;
-    codigo_barras: string | null;
-};
-
-// Para actualizar, cualquier campo es opcional.
-export type ProductoUpdate = Partial<ProductoInsert>;
+export interface ProductoInsert {
+  nombre: string;
+  codigo?: string | null;
+  precio_lista: number;
+  precio_costo?: number;
+  porcentaje_utilidad?: number;
+  stock: number;
+}
 
 export const productoService = {
   async getProductos(page = 1, pageSize = 5, search = "") {
-    // El endpoint ya estaba bien, busca por nombre o código de barras.
-    const endpoint = `/api/productos/?page=${page}&search=${search}&page_size=${pageSize}`;
-    const data = await fetchFromAPI(endpoint);
+    // Calculamos el rango para la paginación de Supabase
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
 
-    // --- CAMBIO 2: Aseguramos que la paginación se calcule correctamente ---
-    const totalPages = Math.ceil((data.count || 0) / pageSize);
+    let query = supabase
+      .from("producto")
+      .select("*", { count: "exact" }) // Pedimos el total de filas para saber cuántas páginas hay
+      .range(from, to)
+      .order("nombre", { ascending: true });
+
+    // Si hay búsqueda, filtramos (ilike es "case insensitive")
+    if (search) {
+      // Buscamos por nombre O por código
+      query = query.or(`nombre.ilike.%${search}%,codigo.ilike.%${search}%`);
+    }
+
+    const { data, count, error } = await query;
+
+    if (error) throw new Error(error.message);
+
+    const totalPages = count ? Math.ceil(count / pageSize) : 0;
 
     return {
-      productos: data.results as Producto[],
-      totalPages: totalPages,
+      productos: data as Producto[],
+      totalPages,
+      totalResultados: count,
     };
   },
 
   async createProducto(producto: ProductoInsert): Promise<Producto> {
-    // --- CAMBIO 3: Eliminamos la lógica de cálculo de precios ---
-    // Esta lógica ya está en el componente de la página. El servicio solo envía.
-    const endpoint = "/api/productos/";
-    return await fetchFromAPI(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(producto),
-    });
+    const { data, error } = await supabase
+      .from("producto")
+      .insert({
+        nombre: producto.nombre,
+        codigo: producto.codigo || null,
+        precio_lista: producto.precio_lista,
+        precio_costo: producto.precio_costo || 0,
+        porcentaje_utilidad: producto.porcentaje_utilidad || 0,
+        stock: producto.stock,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
   },
 
-  async updateProducto(id: number, producto: ProductoUpdate): Promise<Producto> {
-    const endpoint = `/api/productos/${id}/`;
-    return await fetchFromAPI(endpoint, {
-      method: 'PUT', // PUT actualiza el objeto completo. PATCH sería para cambios parciales.
-      body: JSON.stringify(producto),
-    });
+  async updateProducto(id: number, producto: Partial<ProductoInsert>): Promise<Producto> {
+    const { data, error } = await supabase
+      .from("producto")
+      .update(producto)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
   },
 
   async deleteProducto(id: number): Promise<void> {
-    const endpoint = `/api/productos/${id}/`;
-    await fetchFromAPI(endpoint, {
-      method: 'DELETE',
-    });
+    const { error } = await supabase
+      .from("producto")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      // Manejo amigable si el producto ya se vendió (FK Constraint)
+      if (error.code === '23503') {
+        throw new Error("No se puede borrar este producto porque tiene ventas asociadas. Intenta cambiarle el stock a 0.");
+      }
+      throw new Error(error.message);
+    }
   },
 };

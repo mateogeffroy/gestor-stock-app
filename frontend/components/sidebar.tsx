@@ -3,7 +3,6 @@
 import { cn } from "@/lib/utils"
 import { Home, ShoppingCart, Package, DollarSign, Menu, X } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image" // 1. Importamos el componente Image
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -43,15 +42,7 @@ export default function Sidebar() {
   const SidebarContent = () => (
     <>
       <div className="flex h-20 items-center px-6">
-        {/* 2. Reemplazamos <img> por <Image /> */}
-        <Image 
-          src="/icon.png" 
-          alt="La Cuerda Bebidas Logo"
-          width={32} // Ancho en píxeles
-          height={32} // Alto en píxeles
-          className="mr-3" // Mantenemos el margen
-        />
-        <h1 className="text-xl font-bold">La Cuerda Bebidas</h1>
+        <h1 className="text-xl font-bold">Gestor de stock</h1>
       </div>
       <div className="flex flex-col gap-2 px-3">
         {routes.map((route) => (

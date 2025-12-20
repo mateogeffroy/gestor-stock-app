@@ -1,201 +1,200 @@
 "use client"
 
 import { useState, useEffect, useMemo, useRef } from "react"
-import { Venta, NuevaVentaState, DetalleVentaForm } from "../types"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Venta, NuevaVentaState, DetalleVentaForm, Producto } from "../types"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ProductSearch } from "./ProductSearch"
 import { DetalleVentaTable } from "./DetalleVentaTable"
-import { Producto } from "../types"
+import { ArrowLeft, PackagePlus } from "lucide-react"
 
 interface VentaFormProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  venta?: Venta
+  venta?: any // Usamos any temporalmente para edición si la estructura difiere mucho
   onSubmit: (ventaData: NuevaVentaState) => void
   onSearchProductos: (term: string) => Promise<Producto[]>
+  onCancel: () => void
 }
 
-const initialDetalleState: DetalleVentaForm = {
-  lineItemId: 0,
-  id_producto: null,
-  nombre_producto: '',
-  precio_unitario: 0,
-  cantidad: 1,
-  descuento_individual: 0,
-  subtotal: 0,
-  esNuevo: true,
-}
+const initialFormState: NuevaVentaState = {
+  id_tipo_venta: 1, // 1 = Venta General (Default)
+  detalles: [],
+  total: 0
+};
 
-export function VentaForm({ open, onOpenChange, venta, onSubmit, onSearchProductos }: VentaFormProps) {
+export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: VentaFormProps) {
   const detailIdCounter = useRef(1);
-  
-  const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>({
-    tipo: "orden_compra",
-    descuento_general: 0,
-    detalles: [initialDetalleState],
-  });
+  const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>(initialFormState);
 
+  // Carga de datos para edición (Si aplica)
   useEffect(() => {
-    if (open) {
-      if (venta) {
-        setNuevaVenta({
-          tipo: venta.tipo,
-          descuento_general: Number(venta.descuento_general),
-          detalles: venta.detalles.map(d => ({
-            lineItemId: detailIdCounter.current++, // Asignamos un ID único al cargar
-            id_producto: d.producto.id,
-            nombre_producto: d.producto.nombre,
-            precio_unitario: Number(d.precio_unitario),
-            cantidad: d.cantidad,
-            descuento_individual: Number(d.descuento_individual),
-            subtotal: Number(d.subtotal)
-          }))
-        });
-      } else {
-        // Reseteamos el contador y el estado para una nueva venta
-        detailIdCounter.current = 1;
-        setNuevaVenta({
-          tipo: "orden_compra",
-          descuento_general: 0,
-          detalles: [{...initialDetalleState, lineItemId: 0}],
-        });
-      }
+    if (venta) {
+      // Nota: Editar ventas históricas es complejo. Por ahora lo dejamos básico.
+      setNuevaVenta({
+        id_tipo_venta: venta.id_tipo_venta || 1,
+        total: venta.total,
+        detalles: [] // Cargar detalles de edición requiere mapear desde BD
+      });
     }
-  }, [open, venta]);
+  }, [venta]);
 
   const handleSelectProducto = (producto: Producto) => {
     setNuevaVenta(prev => {
-      const nuevosDetalles = prev.detalles.filter(d => !d.esNuevo);
+      const nuevosDetalles = [...prev.detalles];
+      // Usamos precio_lista como el precio de venta unitario
+      const precioVenta = Number(producto.precio_lista);
+
       nuevosDetalles.push({
-        lineItemId: detailIdCounter.current++, // Asignamos un ID único a la nueva línea
+        lineItemId: detailIdCounter.current++,
         id_producto: producto.id,
         nombre_producto: producto.nombre,
-        precio_unitario: Number(producto.precio_final || producto.precio_lista),
+        precio_unitario: precioVenta,
         cantidad: 1,
         descuento_individual: 0,
-        subtotal: Number(producto.precio_final || producto.precio_lista),
+        subtotal: precioVenta,
       });
-      // La nueva fila vacía también obtiene un ID único
-      nuevosDetalles.push({ ...initialDetalleState, lineItemId: detailIdCounter.current++ }); 
       return { ...prev, detalles: nuevosDetalles };
     });
   };
+  
+  const handleCreateNonExistentProduct = (productName: string) => {
+      setNuevaVenta(prev => {
+          const nuevosDetalles = [...prev.detalles];
+          nuevosDetalles.push({
+              lineItemId: detailIdCounter.current++,
+              id_producto: null,
+              nombre_producto: productName,
+              precio_unitario: 0,
+              cantidad: 1,
+              descuento_individual: 0,
+              subtotal: 0,
+          });
+          return { ...prev, detalles: nuevosDetalles };
+      });
+  };
 
-  const handleDetalleChange = (index: number, field: keyof DetalleVentaForm, value: any) => {
+  const handleDetalleChange = (lineItemId: number, field: keyof DetalleVentaForm, value: any) => {
     setNuevaVenta(prev => {
-      const detallesActualizados = [...prev.detalles];
-      const detalleModificado = { ...detallesActualizados[index], [field]: value };
-
-      const { precio_unitario, cantidad, descuento_individual } = detalleModificado;
-      const subtotalSinDescuento = precio_unitario * cantidad;
-      detalleModificado.subtotal = subtotalSinDescuento * (1 - (descuento_individual / 100));
-      
-      detallesActualizados[index] = detalleModificado;
+      const detallesActualizados = prev.detalles.map(detalle => {
+        if (detalle.lineItemId === lineItemId) {
+          const detalleModificado = { ...detalle, [field]: value };
+          
+          // Recalcular subtotal: (Precio * Cantidad) * (1 - Descuento/100)
+          const precio = Number(detalleModificado.precio_unitario);
+          const cantidad = Number(detalleModificado.cantidad);
+          const desc = Number(detalleModificado.descuento_individual);
+          
+          const subtotalSinDescuento = precio * cantidad;
+          detalleModificado.subtotal = subtotalSinDescuento * (1 - (desc / 100));
+          
+          return detalleModificado;
+        }
+        return detalle;
+      });
       return { ...prev, detalles: detallesActualizados };
     });
   };
 
-  const handleRemoveDetalle = (index: number) => {
-    setNuevaVenta(prev => {
-      const detallesFiltrados = prev.detalles.filter((_, i) => i !== index);
-      if (detallesFiltrados.length === 0 || detallesFiltrados.every(d => !d.esNuevo)) {
-        detallesFiltrados.push({ ...initialDetalleState, lineItemId: detailIdCounter.current++ });
-      }
-      return { ...prev, detalles: detallesFiltrados };
-    });
+  const handleRemoveDetalle = (lineItemId: number) => {
+    setNuevaVenta(prev => ({
+      ...prev,
+      detalles: prev.detalles.filter(d => d.lineItemId !== lineItemId)
+    }));
   };
 
+  // Cálculo automático del total general
   const totalVenta = useMemo(() => {
-    const subtotalBruto = nuevaVenta.detalles
-        .filter(d => !d.esNuevo)
-        .reduce((sum, detalle) => sum + detalle.subtotal, 0);
-    
-    return subtotalBruto * (1 - (nuevaVenta.descuento_general / 100));
-  }, [nuevaVenta.detalles, nuevaVenta.descuento_general]);
+    return nuevaVenta.detalles.reduce((sum, detalle) => sum + detalle.subtotal, 0);
+  }, [nuevaVenta.detalles]);
 
   const handleFinalSubmit = () => {
-    const ventaParaEnviar = {
+    // Validamos que haya detalles
+    if (nuevaVenta.detalles.length === 0) {
+        alert("Debes agregar al menos un producto.");
+        return;
+    }
+
+    onSubmit({
       ...nuevaVenta,
-      detalles: nuevaVenta.detalles.filter(d => !d.esNuevo),
-    };
-    onSubmit(ventaParaEnviar);
+      total: totalVenta,
+      detalles: nuevaVenta.detalles
+    });
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{venta ? "Editar Venta" : "Nueva Venta"}</DialogTitle>
-          <DialogDescription>
-            Agrega productos y define los descuentos para registrar la venta.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="flex-grow overflow-y-auto pr-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="tipo">Tipo de Venta</Label>
-              <Select
-                value={nuevaVenta.tipo}
-                onValueChange={(value: 'orden_compra' | 'factura_b') => setNuevaVenta(prev => ({ ...prev, tipo: value }))}
-              >
-                <SelectTrigger id="tipo"><SelectValue placeholder="Selecciona un tipo" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="orden_compra">Orden de compra</SelectItem>
-                  <SelectItem value="factura_b">Factura electrónica B</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="descuento_general">Descuento General (%)</Label>
-              <Input
-                id="descuento_general"
-                type="number"
-                min="0" max="100"
-                value={nuevaVenta.descuento_general}
-                onChange={(e) => setNuevaVenta(prev => ({...prev, descuento_general: Number(e.target.value) || 0 }))}
-              />
-            </div>
+    <Card className="w-full">
+      <CardHeader>
+        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+          <div>
+            <CardTitle className="text-3xl font-bold tracking-tight">
+              {venta ? "Ver Venta" : "Nueva Venta"}
+            </CardTitle>
+            <CardDescription>
+              Agrega productos al carrito. La caja se asignará automáticamente.
+            </CardDescription>
           </div>
-          
-          <div className="mt-6 space-y-2">
-            <Label>Buscar y Agregar Productos</Label>
-            <ProductSearch 
-              onSelect={handleSelectProducto} 
-              onSearch={onSearchProductos} 
-            />
+          <div className="space-y-2 w-full sm:w-1/3">
+            <Label htmlFor="tipo">Tipo de Comprobante</Label>
+            <Select
+              value={String(nuevaVenta.id_tipo_venta)}
+              onValueChange={(value) => setNuevaVenta(prev => ({ ...prev, id_tipo_venta: Number(value) }))}
+            >
+              <SelectTrigger id="tipo"><SelectValue placeholder="Selecciona tipo" /></SelectTrigger>
+              <SelectContent>
+                {/* Estos IDs deben coincidir con tu tabla tipo_venta */}
+                <SelectItem value="1">Venta General</SelectItem>
+                <SelectItem value="2">Factura B</SelectItem>
+                <SelectItem value="3">Orden de Compra</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        </div>
+      </CardHeader>
+      
+      <CardContent className="space-y-6">
+        <div className="space-y-2">
+          <Label>Buscar Productos</Label>
+          <ProductSearch 
+            onSelect={handleSelectProducto} 
+            onSearch={onSearchProductos} 
+            onCommitNotFound={handleCreateNonExistentProduct}
+          />
+        </div>
 
-          <div className="mt-4 space-y-2">
-            <Label>Detalle de Venta</Label>
+        <div className="space-y-2">
+          <Label>Detalle</Label>
+          {nuevaVenta.detalles.length > 0 ? (
             <DetalleVentaTable
               detalles={nuevaVenta.detalles}
               onDetalleChange={handleDetalleChange}
               onRemoveDetalle={handleRemoveDetalle}
             />
+          ) : (
+            <div className="flex flex-col items-center justify-center text-center text-muted-foreground border-2 border-dashed rounded-lg p-8 bg-muted/20">
+              <PackagePlus className="h-10 w-10 mb-2 opacity-50" />
+              <p className="font-medium">Carrito vacío</p>
+              <p className="text-sm">Busca un producto para comenzar.</p>
+            </div>
+          )}
+        </div>
+      </CardContent>
+
+      <CardFooter className="pt-6 border-t bg-muted/10">
+        <div className="flex flex-col sm:flex-row justify-between items-center w-full gap-4">
+          <div className="text-3xl font-bold text-primary">
+            Total: ${totalVenta.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
+              <ArrowLeft className="mr-2 h-4 w-4" /> Volver
+            </Button>
+            <Button onClick={handleFinalSubmit} className="flex-1 sm:flex-none" size="lg">
+              Confirmar Venta
+            </Button>
           </div>
         </div>
-
-        <DialogFooter className="pt-4 border-t">
-          <div className="flex justify-between items-center w-full">
-            <div className="text-2xl font-bold">
-              Total: ${totalVenta.toFixed(2)}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleFinalSubmit}>
-                {venta ? "Actualizar" : "Guardar"} Venta
-              </Button>
-            </div>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </CardFooter>
+    </Card>
   )
 }

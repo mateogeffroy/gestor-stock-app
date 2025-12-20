@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import dj_database_url
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -63,10 +64,7 @@ db_directory = os.path.join(os.path.expanduser('~'), 'Documents', 'Gestor_de_sto
 os.makedirs(db_directory, exist_ok=True)
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(db_directory, 'db.sqlite3'),
-    }
+    'default': dj_database_url.config(default='postgresql://postgres:expeMuZnlcfTK5XL@db.dixmxwcwkslgugzlbfrp.supabase.co:5432/postgres')
 }
 
 AUTH_PASSWORD_VALIDATORS = [
