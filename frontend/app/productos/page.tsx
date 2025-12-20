@@ -1,5 +1,3 @@
-// frontend/app/productos/page.tsx
-
 "use client"
 
 import type React from "react"
@@ -17,15 +15,17 @@ import { productoService, type Producto, type ProductoInsert } from "@/services/
 import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
 
+// Función para resaltar coincidencias en la búsqueda
 const highlightMatches = (text: string, searchTerm: string) => {
-    if (!searchTerm.trim()) return text;
-    const regex = new RegExp(`(${searchTerm})`, 'gi');
-    const parts = text.split(regex);
-    return parts.map((part, index) => 
-        part.toLowerCase() === searchTerm.toLowerCase() ? (
-        <span key={index} className="bg-red-400/20 rounded-sm">{part}</span>
-        ) : (part)
-    );
+  if (!text) return "-";
+  if (!searchTerm.trim()) return text;
+  const regex = new RegExp(`(${searchTerm})`, 'gi');
+  const parts = text.split(regex);
+  return parts.map((part, index) =>
+    part.toLowerCase() === searchTerm.toLowerCase() ? (
+      <span key={index} className="bg-red-400/20 rounded-sm">{part}</span>
+    ) : (part)
+  );
 };
 
 export default function ProductosPage() {
@@ -38,11 +38,18 @@ export default function ProductosPage() {
   const [isSearching, setIsSearching] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+
+  // Estado del formulario (Adaptado a la nueva BD)
+  // Nota: precio_lista en BD es el Precio de Venta. precio_costo es el costo base.
   const [nuevoProducto, setNuevoProducto] = useState({
-    nombre: "", stock: "", precio_lista: "", utilidad_porcentual: "", precio_final: "", codigo_barras: "",
+    nombre: "",
+    stock: "",
+    precio_costo: "",       // Antes "precio_lista" (base)
+    utilidad_porcentual: "",
+    precio_lista: "",       // Antes "precio_final" (venta)
+    codigo: "",             // Antes "codigo_barras"
   })
 
-  // --- CAMBIO 1: Adaptamos la función de carga a la nueva respuesta del servicio ---
   const loadProductos = async (page = 1, search = searchTerm) => {
     setIsLoading(true)
     try {
@@ -79,93 +86,95 @@ export default function ProductosPage() {
   }, [searchTerm, debouncedSearch])
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => { setSearchTerm(e.target.value) }
-  
+
   const handleOpenDialog = (producto: Producto | null = null) => {
     if (producto) {
       setEditingProducto(producto)
       setNuevoProducto({
-        nombre: producto.nombre, 
-        stock: String(producto.stock), 
+        nombre: producto.nombre,
+        stock: String(producto.stock),
+        precio_costo: String(producto.precio_costo),
+        utilidad_porcentual: String(producto.porcentaje_utilidad),
         precio_lista: String(producto.precio_lista),
-        utilidad_porcentual: producto.utilidad_porcentual ? String(producto.utilidad_porcentual) : "",
-        precio_final: producto.precio_final ? String(producto.precio_final) : "",
-        codigo_barras: producto.codigo_barras || "",
+        codigo: producto.codigo || "",
       })
     } else {
       setEditingProducto(null)
       setNuevoProducto({
-        nombre: "", stock: "", precio_lista: "", utilidad_porcentual: "", precio_final: "", codigo_barras: "",
+        nombre: "", stock: "", precio_costo: "", utilidad_porcentual: "", precio_lista: "", codigo: "",
       })
     }
     setIsDialogOpen(true)
   }
 
-  const handlePrecioListaChange = (value: string) => {
-    const precioLista = Number.parseFloat(value)
+  // Lógica de cálculo de precios (Costo + Utilidad = Precio Venta)
+  const handlePrecioCostoChange = (value: string) => {
+    const costo = Number.parseFloat(value)
     const utilidad = Number.parseFloat(nuevoProducto.utilidad_porcentual)
-    let precioFinalCalculado = nuevoProducto.precio_final
-    
-    if (!isNaN(precioLista) && !isNaN(utilidad)) {
-        precioFinalCalculado = (precioLista * (1 + utilidad / 100)).toFixed(2)
+    let precioVentaCalculado = nuevoProducto.precio_lista
+
+    if (!isNaN(costo) && !isNaN(utilidad)) {
+      precioVentaCalculado = (costo * (1 + utilidad / 100)).toFixed(2)
     }
-    
-    setNuevoProducto({ ...nuevoProducto, precio_lista: value, precio_final: precioFinalCalculado })
+
+    setNuevoProducto({ ...nuevoProducto, precio_costo: value, precio_lista: precioVentaCalculado })
   }
 
   const handleUtilidadChange = (value: string) => {
     const utilidad = Number.parseFloat(value)
-    const precioLista = Number.parseFloat(nuevoProducto.precio_lista)
-    let precioFinalCalculado = nuevoProducto.precio_final
-    
-    if (!isNaN(utilidad) && !isNaN(precioLista)) {
-        precioFinalCalculado = (precioLista * (1 + utilidad / 100)).toFixed(2)
+    const costo = Number.parseFloat(nuevoProducto.precio_costo)
+    let precioVentaCalculado = nuevoProducto.precio_lista
+
+    if (!isNaN(utilidad) && !isNaN(costo)) {
+      precioVentaCalculado = (costo * (1 + utilidad / 100)).toFixed(2)
     }
-    
-    setNuevoProducto({ ...nuevoProducto, utilidad_porcentual: value, precio_final: precioFinalCalculado })
+
+    setNuevoProducto({ ...nuevoProducto, utilidad_porcentual: value, precio_lista: precioVentaCalculado })
   }
 
-  const handlePrecioFinalChange = (value: string) => {
-    const precioFinal = Number.parseFloat(value)
-    const precioLista = Number.parseFloat(nuevoProducto.precio_lista)
+  const handlePrecioVentaChange = (value: string) => {
+    const precioVenta = Number.parseFloat(value)
+    const costo = Number.parseFloat(nuevoProducto.precio_costo)
     let utilidadCalculada = nuevoProducto.utilidad_porcentual
 
-    if (!isNaN(precioFinal) && !isNaN(precioLista) && precioLista > 0) {
-        utilidadCalculada = ((precioFinal / precioLista - 1) * 100).toFixed(2)
+    if (!isNaN(precioVenta) && !isNaN(costo) && costo > 0) {
+      utilidadCalculada = ((precioVenta / costo - 1) * 100).toFixed(2)
     }
 
-    setNuevoProducto({ ...nuevoProducto, precio_final: value, utilidad_porcentual: utilidadCalculada })
+    setNuevoProducto({ ...nuevoProducto, precio_lista: value, utilidad_porcentual: utilidadCalculada })
   }
 
   const handleSubmit = async () => {
     try {
+      // Mapeo al formato que espera la BD
       const productoData: ProductoInsert = {
         nombre: nuevoProducto.nombre,
         stock: Number.parseInt(nuevoProducto.stock, 10),
-        precio_lista: Number.parseFloat(nuevoProducto.precio_lista),
-        utilidad_porcentual: nuevoProducto.utilidad_porcentual ? Number.parseFloat(nuevoProducto.utilidad_porcentual) : null,
-        precio_final: nuevoProducto.precio_final ? Number.parseFloat(nuevoProducto.precio_final) : null,
-        codigo_barras: nuevoProducto.codigo_barras || null,
+        precio_costo: Number.parseFloat(nuevoProducto.precio_costo) || 0,
+        porcentaje_utilidad: Number.parseFloat(nuevoProducto.utilidad_porcentual) || 0,
+        precio_lista: Number.parseFloat(nuevoProducto.precio_lista), // Este es el precio final de venta
+        codigo: nuevoProducto.codigo || null,
       }
 
       // Validación simple
-      if (!productoData.nombre || !productoData.stock || !productoData.precio_lista) {
-        toast({ title: "Error de validación", description: "Nombre, stock y precio de lista son obligatorios.", variant: "destructive" });
+      if (!productoData.nombre || isNaN(productoData.stock) || isNaN(productoData.precio_lista)) {
+        toast({ title: "Error de validación", description: "Nombre, stock y precio de venta son obligatorios.", variant: "destructive" });
         return;
       }
 
       if (editingProducto) {
         await productoService.updateProducto(editingProducto.id, productoData)
         toast({ title: "Éxito", description: "Producto actualizado correctamente" })
-        loadProductos(currentPage, searchTerm) 
+        loadProductos(currentPage, searchTerm)
       } else {
         await productoService.createProducto(productoData)
         toast({ title: "Éxito", description: "Producto creado correctamente" })
-        loadProductos(1, "") // Al crear, volvemos a la página 1 sin búsqueda
+        loadProductos(1, "") // Volver a pág 1
       }
       setIsDialogOpen(false)
     } catch (error) {
       console.error("Error al guardar producto:", error)
-      toast({ title: "Error", description: "No se pudo guardar el producto", variant: "destructive" })
+      toast({ title: "Error", description: "No se pudo guardar el producto. Verifique si el código ya existe.", variant: "destructive" })
     }
   }
 
@@ -174,31 +183,29 @@ export default function ProductosPage() {
       try {
         await productoService.deleteProducto(id)
         toast({ title: "Éxito", description: "Producto eliminado correctamente" })
-        // Si la página actual queda vacía, retrocedemos una página
         if (productos.length === 1 && currentPage > 1) {
-            loadProductos(currentPage - 1, searchTerm);
+          loadProductos(currentPage - 1, searchTerm);
         } else {
-            loadProductos(currentPage, searchTerm);
+          loadProductos(currentPage, searchTerm);
         }
-      } catch (error) {
-        console.error("Error al eliminar producto:", error)
-        toast({ title: "Error", description: "No se pudo eliminar el producto", variant: "destructive" })
+      } catch (error: any) {
+        console.error("Error al eliminar:", error)
+        toast({ title: "Error", description: error.message || "No se pudo eliminar el producto", variant: "destructive" })
       }
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* El resto del JSX no necesita cambios, pero lo incluyo por completitud */}
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
-        <p className="text-muted-foreground">Gestiona el inventario de productos de La Cuerda Bebidas</p>
+        <p className="text-muted-foreground">Gestiona el inventario de productos (Supabase)</p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input type="search" placeholder="Buscar productos..." className="pl-8 w-full" value={searchTerm} onChange={handleSearchChange} />
+          <Input type="search" placeholder="Buscar por nombre o código..." className="pl-8 w-full" value={searchTerm} onChange={handleSearchChange} />
           {isSearching && <div className="absolute right-2.5 top-2.5"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -216,9 +223,13 @@ export default function ProductosPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>ID</TableHead><TableHead>Nombre</TableHead><TableHead>Código</TableHead>
-                    <TableHead>Precio Lista</TableHead><TableHead>Utilidad %</TableHead><TableHead>Precio Final</TableHead>
-                    <TableHead>Stock</TableHead><TableHead className="text-right">Acciones</TableHead>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Código</TableHead>
+                    <TableHead>Costo</TableHead>
+                    <TableHead>Utilidad %</TableHead>
+                    <TableHead>Precio Venta</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -226,13 +237,11 @@ export default function ProductosPage() {
                     {productos.length > 0 ? (
                       productos.map((producto) => (
                         <motion.tr key={producto.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="border-b">
-                          <TableCell className="font-medium">{producto.id}</TableCell>
-                          <TableCell>{highlightMatches(producto.nombre, searchTerm)}</TableCell>
-                          <TableCell>{producto.codigo_barras || "-"}</TableCell>
-                          {/* --- CAMBIO 2: Convertimos a número antes de formatear --- */}
-                          <TableCell>${Number(producto.precio_lista).toLocaleString('es-AR')}</TableCell>
-                          <TableCell>{producto.utilidad_porcentual ? `${Number(producto.utilidad_porcentual).toFixed(2)}%` : "-"}</TableCell>
-                          <TableCell>${producto.precio_final ? Number(producto.precio_final).toLocaleString('es-AR') : "-"}</TableCell>
+                          <TableCell className="font-medium">{highlightMatches(producto.nombre, searchTerm)}</TableCell>
+                          <TableCell>{highlightMatches(producto.codigo || "-", searchTerm)}</TableCell>
+                          <TableCell className="text-muted-foreground">${Number(producto.precio_costo).toLocaleString('es-AR')}</TableCell>
+                          <TableCell>{producto.porcentaje_utilidad ? `${Number(producto.porcentaje_utilidad).toFixed(2)}%` : "-"}</TableCell>
+                          <TableCell className="font-bold text-green-600">${Number(producto.precio_lista).toLocaleString('es-AR')}</TableCell>
                           <TableCell>{producto.stock}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
@@ -243,7 +252,7 @@ export default function ProductosPage() {
                         </motion.tr>
                       ))
                     ) : (
-                      <tr><TableCell colSpan={8} className="text-center py-6">{searchTerm ? `No se encontraron productos con "${searchTerm}"` : "No hay productos disponibles"}</TableCell></tr>
+                      <tr><TableCell colSpan={7} className="text-center py-6">{searchTerm ? `No se encontraron productos con "${searchTerm}"` : "No hay productos disponibles"}</TableCell></tr>
                     )}
                   </AnimatePresence>
                 </TableBody>
@@ -252,7 +261,7 @@ export default function ProductosPage() {
           )}
         </CardContent>
       </Card>
-      
+
       {totalPages > 1 && !isLoading && (
         <Pagination>
           <PaginationContent>
@@ -273,12 +282,26 @@ export default function ProductosPage() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-1 gap-4">
-                <div className="space-y-2"><Label htmlFor="nombre">Nombre *</Label><Input id="nombre" placeholder="Nombre del producto" value={nuevoProducto.nombre} onChange={(e) => setNuevoProducto({ ...nuevoProducto, nombre: e.target.value })} required/></div>
-                <div className="space-y-2"><Label htmlFor="codigo_barras">Código de Barras</Label><Input id="codigo_barras" placeholder="(opcional)" value={nuevoProducto.codigo_barras} onChange={(e) => setNuevoProducto({ ...nuevoProducto, codigo_barras: e.target.value })}/></div>
-                <div className="space-y-2"><Label htmlFor="precio_lista">Precio de Lista *</Label><Input id="precio_lista" type="number" step="0.01" placeholder="Ej: 1500.00" value={nuevoProducto.precio_lista} onChange={(e) => handlePrecioListaChange(e.target.value)} required/></div>
-                <div className="space-y-2"><Label htmlFor="utilidad_porcentual">Utilidad (%)</Label><Input id="utilidad_porcentual" type="number" step="0.01" placeholder="Ej: 25" value={nuevoProducto.utilidad_porcentual} onChange={(e) => handleUtilidadChange(e.target.value)} /></div>
-                <div className="space-y-2"><Label htmlFor="precio_final">Precio Final</Label><Input id="precio_final" type="number" step="0.01" placeholder="Se calcula automáticamente" value={nuevoProducto.precio_final} onChange={(e) => handlePrecioFinalChange(e.target.value)} /></div>
-                <div className="space-y-2"><Label htmlFor="stock">Stock *</Label><Input id="stock" type="number" placeholder="Cantidad inicial" value={nuevoProducto.stock} onChange={(e) => setNuevoProducto({ ...nuevoProducto, stock: e.target.value })} required/></div>
+              <div className="space-y-2"><Label htmlFor="nombre">Nombre *</Label><Input id="nombre" placeholder="Nombre del producto" value={nuevoProducto.nombre} onChange={(e) => setNuevoProducto({ ...nuevoProducto, nombre: e.target.value })} required /></div>
+              <div className="space-y-2"><Label htmlFor="codigo">Código de Barras</Label><Input id="codigo" placeholder="(opcional)" value={nuevoProducto.codigo} onChange={(e) => setNuevoProducto({ ...nuevoProducto, codigo: e.target.value })} /></div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="precio_costo">Precio Costo</Label>
+                  <Input id="precio_costo" type="number" step="0.01" placeholder="0.00" value={nuevoProducto.precio_costo} onChange={(e) => handlePrecioCostoChange(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="utilidad_porcentual">Utilidad (%)</Label>
+                  <Input id="utilidad_porcentual" type="number" step="0.01" placeholder="Ej: 30" value={nuevoProducto.utilidad_porcentual} onChange={(e) => handleUtilidadChange(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="precio_lista" className="font-bold">Precio Venta (Final) *</Label>
+                <Input id="precio_lista" type="number" step="0.01" className="font-bold border-green-500" placeholder="0.00" value={nuevoProducto.precio_lista} onChange={(e) => handlePrecioVentaChange(e.target.value)} required />
+              </div>
+
+              <div className="space-y-2"><Label htmlFor="stock">Stock *</Label><Input id="stock" type="number" placeholder="Cantidad inicial" value={nuevoProducto.stock} onChange={(e) => setNuevoProducto({ ...nuevoProducto, stock: e.target.value })} required /></div>
             </div>
           </div>
           <DialogFooter>

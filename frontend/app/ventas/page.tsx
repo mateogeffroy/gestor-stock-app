@@ -6,28 +6,31 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { VentasTable } from "./components/VentasTable"
 import { VentaForm } from "./components/VentaForm"
-import { VentaDetalleDialog } from "./components/VentaDetalleDialog" 
-import { fetchVentas, searchProductos, createVenta, deleteVenta, updateVenta } from "./actions"
-import { Venta, NuevaVentaState } from "./types"
+import { VentaDetalleDialog } from "./components/VentaDetalleDialog"
+// Importamos los servicios
+import { ventaService, type NuevaVenta } from "@/services/venta-service"
+import { cajaService } from "@/services/caja-service"
+import { productoService } from "@/services/producto-service"
 import { Plus } from "lucide-react"
 
 export default function VentasPage() {
   const { toast } = useToast()
-  const [ventas, setVentas] = useState<Venta[]>([])
+  const [ventas, setVentas] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [editingVenta, setEditingVenta] = useState<Venta | undefined>(undefined)
+  const [editingVenta, setEditingVenta] = useState<any | undefined>(undefined)
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false)
-  const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null)
+  const [selectedVenta, setSelectedVenta] = useState<any | null>(null)
 
+  // 1. CARGA DE VENTAS
   const loadVentas = async () => {
     setIsLoading(true)
     try {
-      const data = await fetchVentas()
-      setVentas(data.results || [])
+      const data = await ventaService.getUltimasVentas(10)
+      setVentas(data)
     } catch (error) {
-      console.error("Error al cargar ventas:", error)
-      toast({ title: "Error", description: "No se pudieron cargar las ventas", variant: "destructive" })
+      console.error("Error cargando ventas:", error)
+      toast({ title: "Error", description: "Fallo al cargar la lista", variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
@@ -37,71 +40,101 @@ export default function VentasPage() {
     loadVentas()
   }, [])
 
-  const handleOpenEditDialog = (venta?: Venta) => {
+  // 2. ABRIR/CERRAR FORMULARIO
+  const handleOpenForm = (venta?: any) => {
     setEditingVenta(venta)
     setIsFormOpen(true)
   }
 
-  const handleOpenViewDialog = (venta: Venta) => {
-    setSelectedVenta(venta)
-    setIsDetailViewOpen(true)
+  const handleCloseForm = () => {
+    setIsFormOpen(false)
+    setEditingVenta(undefined)
+  }
+
+  const handleOpenViewDialog = async (venta: any) => {
+    try {
+      // Usamos el servicio para traer los detalles (productos anidados)
+      const ventaCompleta = await ventaService.getVentaById(venta.id)
+      setSelectedVenta(ventaCompleta)
+      setIsDetailViewOpen(true)
+    } catch (error) {
+      console.error("Error cargando detalle:", error)
+      toast({ title: "Error", description: "No se pudo cargar el detalle", variant: "destructive" })
+    }
   }
 
   const handleDelete = async (id: number) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar esta venta?")) {
+    if (window.confirm("¿Eliminar venta? Se devolverá el stock.")) {
       try {
-        await deleteVenta(id)
-        toast({ title: "Éxito", description: "Venta eliminada correctamente" })
+        await ventaService.deleteVenta(id) // Asegúrate de haber implementado esto en el service, si no, avísame.
+        toast({ title: "Éxito", description: "Venta eliminada" })
         loadVentas()
-      } catch (error) {
-        console.error("Error al eliminar venta:", error)
-        toast({ title: "Error", description: "No se pudo eliminar la venta", variant: "destructive" })
+      } catch (error: any) {
+        toast({ title: "Error", description: error.message, variant: "destructive" })
       }
     }
   }
 
-  const handleSubmit = async (ventaData: NuevaVentaState) => {
+  // 4. GUARDAR VENTA (Con Logs mejorados para encontrar el error)
+  const handleSubmit = async (formData: any) => {
     try {
-      const payload = {
-        tipo: ventaData.tipo,
-        descuento_general: ventaData.descuento_general,
-        detalles: ventaData.detalles.map(d => ({
-          id_producto: d.id_producto!,
-          cantidad: d.cantidad,
-          precio_unitario: d.precio_unitario,
-          descuento_individual: d.descuento_individual,
-          // --- INICIO DEL CAMBIO ---
-          // Añadimos el subtotal que ya calculamos en el formulario.
-          subtotal: d.subtotal, 
-          // --- FIN DEL CAMBIO ---
-        })),
-      };
+      console.log("1. Iniciando guardado de venta...")
       
-      if (editingVenta) {
-        // Si estamos editando, llamamos a updateVenta
-        const response = await updateVenta(editingVenta.id, payload);
-        toast({ title: "Éxito", description: "Venta actualizada correctamente" });
+      // A) CAJA
+      console.log("2. Buscando/Creando caja del día...")
+      const caja = await cajaService.getCajaDelDia()
+      console.log("   > Caja obtenida ID:", caja?.id)
+      
+      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida.")
 
-        // (La lógica de warnings también podría aplicarse aquí si el update la devuelve)
-        if (response.warnings?.length) {
-          toast({ title: "Advertencia de Stock", description: response.warnings.join("\n"), variant: "destructive", duration: 10000 });
-        }
-      } else {
-        // Si no, llamamos a createVenta
-        const response = await createVenta(payload);
-        toast({ title: "Éxito", description: "Venta registrada correctamente" });
-        if (response.warnings?.length) {
-          toast({ title: "Advertencia de Stock", description: response.warnings.join("\n"), variant: "destructive", duration: 10000 });
-        }
+      // B) PREPARAR DATOS
+      const nuevaVenta: NuevaVenta = {
+        id_caja: caja.id,
+        id_tipo_venta: formData.id_tipo_venta || 1, 
+        total: formData.total, 
+        detalles: formData.detalles.map((d: any) => ({
+          id_producto: d.id_producto,
+          cantidad: Number(d.cantidad),
+          subtotal: Number(d.subtotal)
+        }))
       }
-      // --- FIN DEL CAMBIO ---
+      
+      console.log("3. Enviando venta a Supabase:", nuevaVenta)
 
-      setIsFormOpen(false);
-      loadVentas();
+      if (editingVenta) {
+         toast({ title: "Aviso", description: "Edición no habilitada por seguridad.", variant: "warning" })
+      } else {
+        await ventaService.createVenta(nuevaVenta)
+        toast({ title: "¡Venta Exitosa!", description: "Guardada correctamente" })
+      }
+
+      handleCloseForm()
+      loadVentas()
+      
     } catch (error: any) {
-      console.error("Error al guardar venta:", error);
-      toast({ title: "Error al guardar", description: error.message || "No se pudo registrar la venta", variant: "destructive" })
+      // LOG CRÍTICO: Aquí veremos el error real en la consola del navegador (F12)
+      console.error("❌ ERROR CRÍTICO AL GUARDAR:", error)
+      console.error("Mensaje:", error.message)
+      console.error("Detalle:", error.details || error.hint || JSON.stringify(error))
+
+      toast({ 
+        title: "Error al guardar", 
+        description: error.message || "Revisa la consola (F12) para más detalles.", 
+        variant: "destructive" 
+      })
     }
+  }
+
+  if (isFormOpen) {
+    return (
+      <VentaForm
+        venta={editingVenta}
+        onSubmit={handleSubmit}
+        // Conectamos el buscador directo al servicio
+        onSearchProductos={(query) => productoService.getProductos(1, 10, query).then(res => res.productos)} 
+        onCancel={handleCloseForm}
+      />
+    )
   }
 
   return (
@@ -111,7 +144,7 @@ export default function VentasPage() {
           <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
           <p className="text-muted-foreground">Gestiona las ventas de La Cuerda Bebidas</p>
         </div>
-        <Button onClick={() => handleOpenEditDialog()}>
+        <Button onClick={() => handleOpenForm()}>
           <Plus className="mr-2 h-4 w-4" /> Nueva Venta
         </Button>
       </div>
@@ -122,24 +155,13 @@ export default function VentasPage() {
           <VentasTable 
             ventas={ventas} 
             onView={handleOpenViewDialog}
-            onEdit={handleOpenEditDialog} 
+            onEdit={handleOpenForm} 
             onDelete={handleDelete} 
             isLoading={isLoading} 
           />
         </CardContent>
       </Card>
-
-      <VentaForm
-        open={isFormOpen}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setEditingVenta(undefined);
-          setIsFormOpen(isOpen);
-        }}
-        venta={editingVenta}
-        onSubmit={handleSubmit}
-        onSearchProductos={searchProductos}
-      />
-
+      
       <VentaDetalleDialog
         open={isDetailViewOpen}
         onOpenChange={setIsDetailViewOpen}

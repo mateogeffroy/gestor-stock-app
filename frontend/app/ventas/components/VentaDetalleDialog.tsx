@@ -1,24 +1,34 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { Venta } from "../types"
+import { Venta } from "../types" // Asegúrate de que importe desde tus tipos nuevos
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 interface VentaDetalleDialogProps {
-  venta: Venta | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  venta: Venta | null
 }
 
-export function VentaDetalleDialog({ venta, open, onOpenChange }: VentaDetalleDialogProps) {
+export function VentaDetalleDialog({
+  open,
+  onOpenChange,
+  venta,
+}: VentaDetalleDialogProps) {
   if (!venta) return null
-
-  const totalSinDescuento = venta.detalles.reduce((sum, detalle) => {
-    return sum + (Number(detalle.precio_unitario) * detalle.cantidad)
-  }, 0)
-  
-  const totalDescuentos = totalSinDescuento - Number(venta.importe_total)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -26,59 +36,67 @@ export function VentaDetalleDialog({ venta, open, onOpenChange }: VentaDetalleDi
         <DialogHeader>
           <DialogTitle>Detalle de Venta #{venta.id}</DialogTitle>
           <DialogDescription>
-            Realizada el {new Date(venta.fecha_y_hora).toLocaleString('es-AR')}
+            Realizada el {venta.fecha} a las {venta.hora}
           </DialogDescription>
         </DialogHeader>
-        
-        <div className="py-4 max-h-[60vh] overflow-y-auto">
+
+        <div className="grid grid-cols-2 gap-4 py-4 text-sm">
+          <div>
+            <span className="font-semibold">Tipo:</span>{" "}
+            {venta.tipo_venta?.descripcion || "Venta General"}
+          </div>
+          <div>
+            <span className="font-semibold">Caja ID:</span> {venta.id_caja}
+          </div>
+        </div>
+
+        <div className="border rounded-md">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Producto</TableHead>
-                <TableHead>Cantidad</TableHead>
-                <TableHead>Precio Unit.</TableHead>
-                <TableHead>Desc. Ind.</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead className="text-right">Cant.</TableHead>
                 <TableHead className="text-right">Subtotal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {venta.detalles.map((detalle) => (
+              {venta.venta_detalle?.map((detalle) => (
                 <TableRow key={detalle.id}>
-                  <TableCell className="font-medium">{detalle.producto?.nombre || 'N/A'}</TableCell>
-                  <TableCell>{detalle.cantidad}</TableCell>
-                  <TableCell>${Number(detalle.precio_unitario).toLocaleString('es-AR')}</TableCell>
-                  <TableCell>{Number(detalle.descuento_individual)}%</TableCell>
-                  <TableCell className="text-right font-medium">${Number(detalle.subtotal).toLocaleString('es-AR')}</TableCell>
+                  <TableCell className="font-medium">
+                    {detalle.producto?.nombre || "Producto eliminado"}
+                  </TableCell>
+                  <TableCell>
+                    {detalle.producto?.codigo || "-"}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {detalle.cantidad}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${Number(detalle.subtotal).toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </TableCell>
                 </TableRow>
               ))}
+              {(!venta.venta_detalle || venta.venta_detalle.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    No hay detalles disponibles para esta venta.
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
 
-        <div className="border-t pt-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span>Subtotal (sin descuentos):</span>
-            <span>${totalSinDescuento.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-          </div>
-          {/* --- INICIO DEL CAMBIO --- */}
-          <div className="flex justify-between">
-            <span>Descuento general aplicado:</span>
-            <span>{Number(venta.descuento_general)}%</span>
-          </div>
-          {/* --- FIN DEL CAMBIO --- */}
-          <div className="flex justify-between text-red-600">
-            <span>Descuentos totales (Gral. + Ind.):</span>
-            <span>-${totalDescuentos.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-          </div>
-          <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
-            <span>TOTAL FINAL:</span>
-            <span>${Number(venta.importe_total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+        <div className="flex justify-end pt-4">
+          <div className="text-2xl font-bold">
+            Total: ${Number(venta.total).toLocaleString("es-AR", {
+              minimumFractionDigits: 2,
+            })}
           </div>
         </div>
-
-        <DialogFooter>
-          <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

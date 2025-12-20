@@ -5,22 +5,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ShoppingCart, Loader2 } from "lucide-react"
-// --- 1. Importamos la nueva función y los tipos necesarios ---
 import { fetchUltimasVentas } from "@/app/ventas/actions"
 import { Venta } from "@/app/ventas/types"
 
 
 export default function Home() {
-  // Estados para la calculadora (sin cambios)
   const [total, setTotal] = useState("")
   const [discount, setDiscount] = useState("")
   const [discountedTotal, setDiscountedTotal] = useState(0)
 
-  // --- 2. Añadimos estados para las ventas y la carga ---
   const [ultimasVentas, setUltimasVentas] = useState<Venta[]>([])
   const [isVentasLoading, setIsVentasLoading] = useState(true)
 
-  // --- 3. Creamos un useEffect para llamar a la API al cargar la página ---
   useEffect(() => {
     const cargarVentas = async () => {
       try {
@@ -28,14 +24,13 @@ export default function Home() {
         setUltimasVentas(data);
       } catch (error) {
         console.error("Error al cargar las últimas ventas:", error);
-        // Opcional: mostrar un toast de error
       } finally {
         setIsVentasLoading(false);
       }
     };
 
     cargarVentas();
-  }, []); // El array vacío asegura que se ejecute solo una vez
+  }, []);
 
   useEffect(() => {
     const numericTotal = parseFloat(total)
@@ -53,7 +48,6 @@ export default function Home() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight">Inicio</h1>
-        <p className="text-muted-foreground">Bienvenido al sistema de gestión de La Cuerda Bebidas</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

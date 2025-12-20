@@ -4,14 +4,18 @@ import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Search, Loader2 } from "lucide-react"
-import { Producto } from "@/services/producto-service"
+// Asumo que esta es la ruta correcta para tu tipo Producto, la mantengo.
+import { Producto } from "@/services/producto-service" 
 
+// --- 1. MODIFICACIÓN DE PROPS: Añadimos la nueva prop ---
 interface ProductSearchProps {
-  onSelect: (producto: Producto) => void
-  onSearch: (term: string) => Promise<Producto[]>
+  onSelect: (producto: Producto) => void;
+  onSearch: (term: string) => Promise<Producto[]>;
+  onCommitNotFound: (term: string) => void; // Para agregar productos no encontrados
 }
 
-export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
+// --- Usamos la nueva prop aquí ---
+export function ProductSearch({ onSelect, onSearch, onCommitNotFound }: ProductSearchProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [productos, setProductos] = useState<Producto[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -34,6 +38,7 @@ export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
     return () => clearTimeout(delaySearch)
   }, [searchTerm, onSearch])
 
+  // --- 2. LÓGICA DE TECLADO ACTUALIZADA ---
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
@@ -41,12 +46,25 @@ export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
       setSelectedIndex(prev => Math.max(prev - 1, -1))
-    } else if (e.key === "Enter" && selectedIndex >= 0) {
+    } else if (e.key === "Enter") {
       e.preventDefault()
-      handleSelect(productos[selectedIndex])
+      if (selectedIndex >= 0 && productos[selectedIndex]) {
+        // Caso 1: Hay un item seleccionado en la lista, lo elegimos.
+        handleSelect(productos[selectedIndex])
+      } else if (searchTerm.trim() !== "") {
+        // Caso 2: No hay nada seleccionado, pero hay texto.
+        // ¡Aquí es donde agregamos el producto no existente!
+        onCommitNotFound(searchTerm.trim())
+        // Limpiamos el buscador después de agregarlo.
+        setSearchTerm("")
+        setProductos([])
+        setIsOpen(false)
+        setSelectedIndex(-1)
+      }
     } else if (e.key === "Escape") {
       e.preventDefault()
       setIsOpen(false)
+      setSelectedIndex(-1)
     }
   }
 
@@ -55,6 +73,8 @@ export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
     setSearchTerm("")
     setProductos([])
     setIsOpen(false)
+    // --- 3. PEQUEÑA MEJORA: Reseteamos el índice seleccionado ---
+    setSelectedIndex(-1) 
     inputRef.current?.focus()
   }
 
@@ -63,10 +83,11 @@ export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
       <div className="flex">
         <Input
           ref={inputRef}
-          placeholder="Buscar producto..."
+          placeholder="Buscar producto o agregar 'Redondeo'..."
           value={searchTerm}
           onChange={(e) => {
             setSearchTerm(e.target.value)
+            setSelectedIndex(-1) // Resetear selección al escribir
             if (e.target.value.length >= 2 && !isOpen) setIsOpen(true)
           }}
           onKeyDown={handleKeyDown}
@@ -92,7 +113,7 @@ export function ProductSearch({ onSelect, onSearch }: ProductSearchProps) {
             </div>
           ) : productos.length === 0 ? (
             <div className="p-3 text-center text-sm text-gray-500">
-              No se encontraron productos.
+              {searchTerm.length >= 2 ? 'No se encontraron productos. Presiona Enter para agregarlo manualmente.' : 'Escribe para buscar...'}
             </div>
           ) : (
             <ul className="py-1">
