@@ -123,5 +123,14 @@ export const ventaService = {
       .eq("id", id);
 
     if (deleteError) throw new Error(deleteError.message);
-  }
+  },
+  
+  async updateTipoVenta(idVenta: number, idTipoVenta: number) {
+      const { error } = await supabase
+        .from("venta")
+        .update({ id_tipo_venta: idTipoVenta })
+        .eq("id", idVenta);
+
+      if (error) throw new Error(error.message);
+    }
 };

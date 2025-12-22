@@ -78,15 +78,20 @@ export const cajaService = {
 
   // --- AGREGADO: 4. HISTORIAL DE CAJAS ---
   async getCajas() {
+    const hoy = new Date().toLocaleDateString('en-CA'); // Fecha de hoy YYYY-MM-DD
+
     const { data, error } = await supabase
       .from("caja")
       .select("*")
+      .neq("fecha", hoy) // <--- ESTO ES LO NUEVO: Excluir la caja de hoy
       .order("fecha", { ascending: false })
       .order("id", { ascending: false });
 
     if (error) throw error;
     return data || [];
   },
+
+  
 
   // --- AGREGADO: 5. DETALLE DE VENTAS DE UNA CAJA ---
   async getVentasPorCaja(idCaja: number) {

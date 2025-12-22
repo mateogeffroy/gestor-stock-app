@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from "framer-motion"
 interface VentasTableProps {
   ventas: Venta[]
   onView: (venta: Venta) => void
-  onEdit: (venta: Venta) => void // Dejamos onEdit pero quizás lo desactivemos
+  onEdit: (venta: Venta) => void
   onDelete: (id: number) => void
   isLoading: boolean
 }
@@ -47,9 +47,6 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
         <TableBody>
           <AnimatePresence>
             {ventas.map((venta) => {
-              // Combinamos fecha y hora para mostrar
-              const fechaHora = `${venta.fecha} ${venta.hora}`;
-              // Obtenemos descripción del tipo de forma segura
               const tipoDescripcion = venta.tipo_venta?.descripcion || "Venta General";
 
               return (
@@ -59,11 +56,12 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="border-b hover:bg-muted/50 transition-colors"
+                  // CAMBIO 1: Cursor pointer y evento click en toda la fila
+                  className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => onView(venta)}
                 >
                   <TableCell className="font-medium">{venta.id}</TableCell>
                   <TableCell>
-                    {/* Formateo de fecha simple */}
                     <div className="flex flex-col">
                         <span className="font-medium">{venta.fecha}</span>
                         <span className="text-xs text-muted-foreground">{venta.hora}</span>
@@ -78,19 +76,17 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
                     ${Number(venta.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}
                   </TableCell>
                   <TableCell className="text-right flex gap-1 justify-end">
-                    <Button variant="ghost" size="icon" onClick={() => onView(venta)} title="Ver detalle">
+                    {/* CAMBIO 2: stopPropagation para que el click en el botón no abra el modal dos veces */}
+                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onView(venta); }} title="Ver detalle">
                       <Eye className="h-4 w-4 text-blue-500" />
                     </Button>
-                    
-                    {/* Nota: Editar ventas históricas suele ser peligroso para el stock. 
-                        Podemos ocultar el botón o dejarlo solo para admins. Por ahora lo quito para simplificar. */}
                     
                     <Button 
                       variant="ghost" 
                       size="icon" 
-                      onClick={() => onDelete(venta.id)}
+                      onClick={(e) => { e.stopPropagation(); onDelete(venta.id); }}
                       className="text-red-600 hover:text-red-800 hover:bg-red-100"
-                      title="Eliminar venta (Devuelve stock)"
+                      title="Eliminar venta"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

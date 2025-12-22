@@ -7,77 +7,116 @@ import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 
 interface DetalleVentaTableProps {
-  detalles: DetalleVentaForm[] 
-  onDetalleChange: (index: number, field: keyof DetalleVentaForm, value: any) => void
-  onRemoveDetalle: (index: number) => void
+  detalles: DetalleVentaForm[]
+  onDetalleChange: (lineItemId: number, field: keyof DetalleVentaForm, value: number) => void
+  onRemoveDetalle: (lineItemId: number) => void
 }
 
 export function DetalleVentaTable({ detalles, onDetalleChange, onRemoveDetalle }: DetalleVentaTableProps) {
+  
+  // Función auxiliar para seleccionar todo el texto al hacer click en un input (UX)
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => e.target.select();
+
   return (
-    <div className="border rounded-md overflow-hidden">
+    <div className="border rounded-md overflow-hidden bg-white shadow-sm">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted/50">
           <TableRow>
-            <TableHead className="w-[35%]">Producto</TableHead>
-            <TableHead>Precio</TableHead>
-            <TableHead>Desc. Ind. %</TableHead> 
-            <TableHead>Cantidad</TableHead>
-            <TableHead>Subtotal</TableHead>
+            <TableHead className="w-[30%]">Producto</TableHead>
+            <TableHead className="w-[15%]">Precio Unit.</TableHead>
+            <TableHead className="w-[10%]">Cant.</TableHead>
+            <TableHead className="w-[15%] text-center">Desc. (%)</TableHead>
+            <TableHead className="w-[20%] text-right">Subtotal ($)</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {detalles.map((detalle, index) => (
-            // --- INICIO DEL CAMBIO ---
-            // Usamos el 'lineItemId' único como la key de la fila
+          {detalles.map((detalle) => (
             <TableRow key={detalle.lineItemId}>
-            {/* --- FIN DEL CAMBIO --- */}
-              <TableCell className="font-medium">
-                {detalle.nombre_producto || 'Busca y selecciona un producto'}
+              <TableCell className="align-middle">
+                <div className="flex flex-col">
+                    <span className="font-medium">{detalle.nombre_producto}</span>
+                    {detalle.codigo && <span className="text-xs text-muted-foreground">{detalle.codigo}</span>}
+                </div>
               </TableCell>
+
+              {/* COLUMNA: PRECIO UNITARIO */}
+              <TableCell>
+                <div className="relative">
+                    <span className="absolute left-2 top-2 text-muted-foreground text-xs">$</span>
+                    <Input
+                        type="number"
+                        className="pl-5 h-8 text-sm"
+                        value={detalle.precio_unitario}
+                        onFocus={handleFocus}
+                        onChange={(e) => onDetalleChange(detalle.lineItemId, "precio_unitario", parseFloat(e.target.value))}
+                    />
+                </div>
+              </TableCell>
+
+              {/* COLUMNA: CANTIDAD */}
               <TableCell>
                 <Input
                   type="number"
-                  step="0.01"
-                  min="0"
-                  value={detalle.precio_unitario}
-                  onChange={(e) => onDetalleChange(index, "precio_unitario", Number(e.target.value) || 0)}
-                  disabled={detalle.esNuevo}
-                />
-              </TableCell>
-              <TableCell>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={detalle.descuento_individual}
-                  onChange={(e) => onDetalleChange(index, "descuento_individual", Number(e.target.value) || 0)}
-                  disabled={detalle.esNuevo}
-                  placeholder="0"
-                />
-              </TableCell>
-              <TableCell>
-                <Input
-                  type="number"
-                  min="1"
+                  min="0.1"
+                  step="1"
+                  className="h-8 text-center"
                   value={detalle.cantidad}
-                  onChange={(e) => onDetalleChange(index, "cantidad", Number(e.target.value) || 1)}
-                  disabled={detalle.esNuevo}
+                  onFocus={handleFocus}
+                  onChange={(e) => onDetalleChange(detalle.lineItemId, "cantidad", parseFloat(e.target.value))}
                 />
               </TableCell>
-              <TableCell className="font-medium">${detalle.subtotal.toFixed(2)}</TableCell>
+
+              {/* COLUMNA: DESCUENTO (%) */}
+              <TableCell>
+                 <div className="relative">
+                    <Input
+                        type="number"
+                        min="0"
+                        max="100"
+                        className="h-8 text-center pr-6"
+                        value={detalle.descuento_individual}
+                        onFocus={handleFocus}
+                        onChange={(e) => onDetalleChange(detalle.lineItemId, "descuento_individual", parseFloat(e.target.value))}
+                    />
+                    <span className="absolute right-2 top-2 text-muted-foreground text-xs">%</span>
+                 </div>
+              </TableCell>
+
+              {/* COLUMNA: SUBTOTAL (Editable con lógica inversa) */}
+              <TableCell>
+                <div className="relative">
+                    <span className="absolute left-2 top-2 text-green-700 font-bold text-xs">$</span>
+                    <Input
+                        type="number"
+                        className="pl-5 h-8 font-bold text-green-700 text-right"
+                        value={Number(detalle.subtotal.toFixed(2))}
+                        onFocus={handleFocus}
+                        onChange={(e) => onDetalleChange(detalle.lineItemId, "subtotal", parseFloat(e.target.value))}
+                    />
+                </div>
+              </TableCell>
+
               <TableCell>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => onRemoveDetalle(index)}
-                  disabled={detalle.esNuevo && detalles.length === 1}
+                  className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => onRemoveDetalle(detalle.lineItemId)}
+                  tabIndex={-1} // Evitar tabulación accidental al borrar
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </TableCell>
             </TableRow>
           ))}
+          {detalles.length === 0 && (
+            <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    Escanea un producto para comenzar...
+                </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

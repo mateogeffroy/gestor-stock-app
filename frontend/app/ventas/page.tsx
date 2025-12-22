@@ -8,7 +8,9 @@ import { VentasTable } from "./components/VentasTable"
 import { VentaForm } from "./components/VentaForm"
 import { VentaDetalleDialog } from "./components/VentaDetalleDialog"
 // Importamos los servicios
-import { ventaService, type NuevaVenta } from "@/services/venta-service"
+import { ventaService } from "@/services/venta-service"
+// Importamos el tipo NuevaVenta desde tus types (ajusta la ruta si es necesario)
+import { NuevaVenta } from "./types" 
 import { cajaService } from "@/services/caja-service"
 import { productoService } from "@/services/producto-service"
 import { Plus } from "lucide-react"
@@ -66,7 +68,7 @@ export default function VentasPage() {
   const handleDelete = async (id: number) => {
     if (window.confirm("¿Eliminar venta? Se devolverá el stock.")) {
       try {
-        await ventaService.deleteVenta(id) // Asegúrate de haber implementado esto en el service, si no, avísame.
+        await ventaService.deleteVenta(id)
         toast({ title: "Éxito", description: "Venta eliminada" })
         loadVentas()
       } catch (error: any) {
@@ -75,7 +77,7 @@ export default function VentasPage() {
     }
   }
 
-  // 4. GUARDAR VENTA (Con Logs mejorados para encontrar el error)
+  // 4. GUARDAR VENTA (CORREGIDO PARA LA NUEVA GRILLA)
   const handleSubmit = async (formData: any) => {
     try {
       console.log("1. Iniciando guardado de venta...")
@@ -85,16 +87,19 @@ export default function VentasPage() {
       const caja = await cajaService.getCajaDelDia()
       console.log("   > Caja obtenida ID:", caja?.id)
       
-      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida.")
+      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida. Asegúrate de que el día esté iniciado.")
 
-      // B) PREPARAR DATOS
+      // B) PREPARAR DATOS (Mapeo completo de la nueva grilla)
       const nuevaVenta: NuevaVenta = {
         id_caja: caja.id,
-        id_tipo_venta: formData.id_tipo_venta || 1, 
+        id_tipo_venta: formData.id_tipo_venta || 1, // Default: 1 (Orden de Compra)
         total: formData.total, 
         detalles: formData.detalles.map((d: any) => ({
-          id_producto: d.id_producto,
+          id_producto: d.id_producto, // Puede ser null
+          nombre_producto: d.nombre_producto, // IMPORTANTE: Enviamos el nombre (descripción)
+          precio_unitario: Number(d.precio_unitario),
           cantidad: Number(d.cantidad),
+          descuento_individual: Number(d.descuento_individual || 0),
           subtotal: Number(d.subtotal)
         }))
       }
@@ -112,11 +117,10 @@ export default function VentasPage() {
       loadVentas()
       
     } catch (error: any) {
-      // LOG CRÍTICO: Aquí veremos el error real en la consola del navegador (F12)
+      // LOG CRÍTICO
       console.error("❌ ERROR CRÍTICO AL GUARDAR:", error)
       console.error("Mensaje:", error.message)
-      console.error("Detalle:", error.details || error.hint || JSON.stringify(error))
-
+      
       toast({ 
         title: "Error al guardar", 
         description: error.message || "Revisa la consola (F12) para más detalles.", 
@@ -166,6 +170,10 @@ export default function VentasPage() {
         open={isDetailViewOpen}
         onOpenChange={setIsDetailViewOpen}
         venta={selectedVenta}
+        onVentaUpdated={()=>{
+          loadVentas();
+          if (selectedVenta) handleOpenViewDialog(selectedVenta);
+        }}
       />
     </div>
   )
