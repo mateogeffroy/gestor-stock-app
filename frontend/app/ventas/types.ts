@@ -3,16 +3,12 @@
 // Tipo que viene de la Base de Datos (Supabase)
 export interface Venta {
   id: number;
-  fecha: string;      // "2023-10-25"
-  hora: string;       // "14:30:00"
+  fecha: string;
+  hora: string;
   total: number;
   id_tipo_venta: number;
   id_caja: number;
-  // Relación (Supabase la trae anidada)
-  tipo_venta?: {
-    descripcion: string;
-  };
-  // Detalles opcionales (para la vista de detalle)
+  tipo_venta?: { descripcion: string };
   venta_detalle?: VentaDetalle[];
 }
 
@@ -29,26 +25,28 @@ export interface VentaDetalle {
 
 // Tipo para el formulario de Nueva Venta
 export interface DetalleVentaForm {
-  lineItemId: number; // ID temporal para la UI
-  id_producto: number | null;
+  lineItemId: number; // ID único para la fila (UI)
+  id_producto: number | null; // Null si es un item agregado manualmente
   nombre_producto: string;
+  codigo?: string | null; // Agregamos código para referencia visual
   precio_unitario: number;
   cantidad: number;
-  descuento_individual: number; // Mantenemos esto en UI aunque en BD se guarde el neto
+  descuento_individual: number; // Porcentaje (0-100)
   subtotal: number;
 }
 
 export interface NuevaVentaState {
-  id_tipo_venta: number; // Usamos ID (1, 2, 3) en lugar de string
+  id_tipo_venta: number;
   detalles: DetalleVentaForm[];
   total: number;
 }
 
-// Tipo de producto simplificado para el buscador
 export interface Producto {
   id: number;
   nombre: string;
   codigo: string | null;
-  precio_lista: number; // El precio de venta
+  precio_lista: number;
   stock: number;
+  // Agregamos precio_final opcional por si el backend lo manda calculado
+  precio_final?: number; 
 }

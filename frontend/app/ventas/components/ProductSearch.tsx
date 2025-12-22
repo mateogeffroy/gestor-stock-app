@@ -4,67 +4,69 @@ import { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Search, Loader2 } from "lucide-react"
-// Asumo que esta es la ruta correcta para tu tipo Producto, la mantengo.
-import { Producto } from "@/services/producto-service" 
+import { Producto } from "../types"
 
-// --- 1. MODIFICACIÓN DE PROPS: Añadimos la nueva prop ---
 interface ProductSearchProps {
   onSelect: (producto: Producto) => void;
   onSearch: (term: string) => Promise<Producto[]>;
-  onCommitNotFound: (term: string) => void; // Para agregar productos no encontrados
+  onCommitNotFound: (term: string) => void;
 }
 
-// --- Usamos la nueva prop aquí ---
 export function ProductSearch({ onSelect, onSearch, onCommitNotFound }: ProductSearchProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [productos, setProductos] = useState<Producto[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [selectedIndex, setSelectedIndex] = useState(0) // Iniciamos en 0 para seleccionar rápido con Enter
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-focus al montar el componente (Ideal para pistolas de código de barras)
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   useEffect(() => {
     const delaySearch = setTimeout(async () => {
-      if (searchTerm.length >= 2) {
+      if (searchTerm.length >= 1) { // Buscamos desde 1 caracter
         setIsSearching(true)
-        const results = await onSearch(searchTerm)
-        setProductos(results)
-        setIsSearching(false)
+        try {
+          const results = await onSearch(searchTerm)
+          setProductos(results)
+          // Si hay coincidencia EXACTA de código, la ponemos primero visualmente (aunque el backend ya filtra)
+          setSelectedIndex(0) 
+        } finally {
+          setIsSearching(false)
+        }
       } else {
         setProductos([])
       }
-    }, 300)
+    }, 200) // Delay corto para escáneres rápidos
 
     return () => clearTimeout(delaySearch)
   }, [searchTerm, onSearch])
 
-  // --- 2. LÓGICA DE TECLADO ACTUALIZADA ---
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
       setSelectedIndex(prev => Math.min(prev + 1, productos.length - 1))
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      setSelectedIndex(prev => Math.max(prev - 1, -1))
+      setSelectedIndex(prev => Math.max(prev - 1, 0))
     } else if (e.key === "Enter") {
       e.preventDefault()
-      if (selectedIndex >= 0 && productos[selectedIndex]) {
-        // Caso 1: Hay un item seleccionado en la lista, lo elegimos.
+      
+      // LÓGICA DE ESCÁNER / SELECCIÓN RÁPIDA
+      if (productos.length > 0 && selectedIndex >= 0) {
+        // Opción A: Seleccionar lo que está marcado en la lista
         handleSelect(productos[selectedIndex])
       } else if (searchTerm.trim() !== "") {
-        // Caso 2: No hay nada seleccionado, pero hay texto.
-        // ¡Aquí es donde agregamos el producto no existente!
+        // Opción B: Si no hay resultados de búsqueda, agregar como item manual
         onCommitNotFound(searchTerm.trim())
-        // Limpiamos el buscador después de agregarlo.
         setSearchTerm("")
-        setProductos([])
         setIsOpen(false)
-        setSelectedIndex(-1)
       }
     } else if (e.key === "Escape") {
-      e.preventDefault()
       setIsOpen(false)
-      setSelectedIndex(-1)
     }
   }
 
@@ -73,64 +75,71 @@ export function ProductSearch({ onSelect, onSearch, onCommitNotFound }: ProductS
     setSearchTerm("")
     setProductos([])
     setIsOpen(false)
-    // --- 3. PEQUEÑA MEJORA: Reseteamos el índice seleccionado ---
-    setSelectedIndex(-1) 
+    setSelectedIndex(0)
+    // Mantener el foco en el input para seguir escaneando
     inputRef.current?.focus()
   }
 
   return (
-    <div className="relative">
-      <div className="flex">
+    <div className="relative w-full">
+      <div className="flex gap-2">
         <Input
           ref={inputRef}
-          placeholder="Buscar producto o agregar 'Redondeo'..."
+          autoFocus
+          placeholder="Escanear código o buscar nombre..."
           value={searchTerm}
           onChange={(e) => {
             setSearchTerm(e.target.value)
-            setSelectedIndex(-1) // Resetear selección al escribir
-            if (e.target.value.length >= 2 && !isOpen) setIsOpen(true)
+            if (e.target.value.length > 0) setIsOpen(true)
           }}
           onKeyDown={handleKeyDown}
-          onFocus={() => productos.length > 0 && setIsOpen(true)}
-          className="w-full"
+          onFocus={() => {
+            if (searchTerm.length > 0) setIsOpen(true)
+          }}
+          className="w-full text-lg h-12 border-blue-200 focus-visible:ring-blue-500"
         />
         <Button
-          variant="outline"
-          size="icon"
-          type="button"
+          variant="secondary"
+          className="h-12 w-12 shrink-0"
           onClick={() => setIsOpen(!isOpen)}
-          className="ml-2"
         >
-          <Search className="h-4 w-4" />
+          <Search className="h-5 w-5" />
         </Button>
       </div>
       
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-60 overflow-y-auto">
+      {isOpen && (searchTerm.length > 0 || productos.length > 0) && (
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-xl max-h-[300px] overflow-y-auto">
           {isSearching ? (
             <div className="flex justify-center items-center py-4">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : productos.length === 0 ? (
-            <div className="p-3 text-center text-sm text-gray-500">
-              {searchTerm.length >= 2 ? 'No se encontraron productos. Presiona Enter para agregarlo manualmente.' : 'Escribe para buscar...'}
+            <div className="p-4 text-center text-sm text-gray-500">
+              <p>No encontrado en la base de datos.</p>
+              <p className="text-xs mt-1 text-muted-foreground">Presiona <b>Enter</b> para agregarlo como item manual.</p>
             </div>
           ) : (
             <ul className="py-1">
               {productos.map((producto, index) => (
                 <li
                   key={producto.id}
-                  className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
-                    index === selectedIndex ? "bg-gray-100" : ""
+                  className={`px-4 py-3 cursor-pointer border-b last:border-0 ${
+                    index === selectedIndex ? "bg-blue-50 text-blue-900" : "hover:bg-gray-50"
                   }`}
                   onClick={() => handleSelect(producto)}
                   onMouseEnter={() => setSelectedIndex(index)}
                 >
-                  <div className="font-medium">{producto.nombre}</div>
-                  <div className="text-xs text-gray-600 flex gap-2">
-                    <span>ID: {producto.id}</span>
-                    {producto.codigo_barras && <span>Código: {producto.codigo_barras}</span>}
-                    <span>${producto.precio_final || producto.precio_lista}</span>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-base">{producto.nombre}</div>
+                      <div className="text-xs text-muted-foreground flex gap-3">
+                        {producto.codigo && <span className="bg-gray-100 px-1 rounded">Cod: {producto.codigo}</span>}
+                        <span>Stock: {producto.stock}</span>
+                      </div>
+                    </div>
+                    <div className="text-lg font-bold text-green-700">
+                      ${(producto.precio_final || producto.precio_lista).toLocaleString()}
+                    </div>
                   </div>
                 </li>
               ))}
