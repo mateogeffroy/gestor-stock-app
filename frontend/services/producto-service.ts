@@ -95,4 +95,15 @@ export const productoService = {
       throw new Error(error.message);
     }
   },
+
+  async getProductoByCodigo(codigo: string): Promise<Producto | null> {
+    const { data, error } = await supabase
+      .from("producto")
+      .select("*")
+      .eq("codigo", codigo) // Búsqueda exacta
+      .maybeSingle(); // Retorna null si no existe, en vez de error
+
+    if (error) throw new Error(error.message);
+    return data;
+  },
 };

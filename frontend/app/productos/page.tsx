@@ -8,14 +8,21 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
+import { 
+  Pagination, 
+  PaginationContent, 
+  PaginationItem, 
+  PaginationLink, 
+  PaginationNext, 
+  PaginationPrevious, 
+  PaginationEllipsis 
+} from "@/components/ui/pagination"
 import { Plus, Search, Edit, Trash2, Loader2 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { productoService, type Producto, type ProductoInsert } from "@/services/producto-service"
 import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
 
-// Función para resaltar coincidencias en la búsqueda
 const highlightMatches = (text: string, searchTerm: string) => {
   if (!text) return "-";
   if (!searchTerm.trim()) return text;
@@ -36,24 +43,25 @@ export default function ProductosPage() {
   const [editingProducto, setEditingProducto] = useState<Producto | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSearching, setIsSearching] = useState(false)
+  
+  // ESTADOS DE PAGINACIÓN
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const ITEMS_PER_PAGE = 5; // Configurado a 5 como pediste
 
-  // Estado del formulario (Adaptado a la nueva BD)
-  // Nota: precio_lista en BD es el Precio de Venta. precio_costo es el costo base.
   const [nuevoProducto, setNuevoProducto] = useState({
     nombre: "",
     stock: "",
-    precio_costo: "",       // Antes "precio_lista" (base)
+    precio_costo: "",
     utilidad_porcentual: "",
-    precio_lista: "",       // Antes "precio_final" (venta)
-    codigo: "",             // Antes "codigo_barras"
+    precio_lista: "",
+    codigo: "",
   })
 
   const loadProductos = async (page = 1, search = searchTerm) => {
     setIsLoading(true)
     try {
-      const result = await productoService.getProductos(page, 5, search)
+      const result = await productoService.getProductos(page, ITEMS_PER_PAGE, search)
       setProductos(result.productos || [])
       setTotalPages(result.totalPages || 1)
       setCurrentPage(page)
@@ -87,6 +95,65 @@ export default function ProductosPage() {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => { setSearchTerm(e.target.value) }
 
+  // --- LÓGICA DE PAGINACIÓN VISUAL (ROBUSTA) ---
+  const renderPaginationItems = () => {
+    const items = []
+    
+    // 1. Siempre mostrar la Primera Página
+    items.push(
+      <PaginationItem key={1}>
+        <PaginationLink isActive={currentPage === 1} onClick={() => loadProductos(1)}>
+          1
+        </PaginationLink>
+      </PaginationItem>
+    )
+
+    // 2. Calcular rango de páginas centrales
+    let startPage = Math.max(2, currentPage - 1)
+    let endPage = Math.min(totalPages - 1, currentPage + 1)
+
+    if (currentPage === 1) {
+      endPage = Math.min(totalPages - 1, 3)
+    }
+    if (currentPage === totalPages) {
+      startPage = Math.max(2, totalPages - 2)
+    }
+
+    // 3. Elipsis Izquierda
+    if (startPage > 2) {
+      items.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>)
+    }
+
+    // 4. Bucle Central
+    for (let i = startPage; i <= endPage; i++) {
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink isActive={currentPage === i} onClick={() => loadProductos(i)}>
+            {i}
+          </PaginationLink>
+        </PaginationItem>
+      )
+    }
+
+    // 5. Elipsis Derecha
+    if (endPage < totalPages - 1) {
+      items.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>)
+    }
+
+    // 6. Siempre mostrar la Última Página (si hay más de 1)
+    if (totalPages > 1) {
+      items.push(
+        <PaginationItem key={totalPages}>
+          <PaginationLink isActive={currentPage === totalPages} onClick={() => loadProductos(totalPages)}>
+            {totalPages}
+          </PaginationLink>
+        </PaginationItem>
+      )
+    }
+
+    return items
+  }
+
   const handleOpenDialog = (producto: Producto | null = null) => {
     if (producto) {
       setEditingProducto(producto)
@@ -107,7 +174,6 @@ export default function ProductosPage() {
     setIsDialogOpen(true)
   }
 
-  // Lógica de cálculo de precios (Costo + Utilidad = Precio Venta)
   const handlePrecioCostoChange = (value: string) => {
     const costo = Number.parseFloat(value)
     const utilidad = Number.parseFloat(nuevoProducto.utilidad_porcentual)
@@ -146,17 +212,15 @@ export default function ProductosPage() {
 
   const handleSubmit = async () => {
     try {
-      // Mapeo al formato que espera la BD
       const productoData: ProductoInsert = {
         nombre: nuevoProducto.nombre,
         stock: Number.parseInt(nuevoProducto.stock, 10),
         precio_costo: Number.parseFloat(nuevoProducto.precio_costo) || 0,
         porcentaje_utilidad: Number.parseFloat(nuevoProducto.utilidad_porcentual) || 0,
-        precio_lista: Number.parseFloat(nuevoProducto.precio_lista), // Este es el precio final de venta
+        precio_lista: Number.parseFloat(nuevoProducto.precio_lista),
         codigo: nuevoProducto.codigo || null,
       }
 
-      // Validación simple
       if (!productoData.nombre || isNaN(productoData.stock) || isNaN(productoData.precio_lista)) {
         toast({ title: "Error de validación", description: "Nombre, stock y precio de venta son obligatorios.", variant: "destructive" });
         return;
@@ -169,7 +233,7 @@ export default function ProductosPage() {
       } else {
         await productoService.createProducto(productoData)
         toast({ title: "Éxito", description: "Producto creado correctamente" })
-        loadProductos(1, "") // Volver a pág 1
+        loadProductos(1, "") 
       }
       setIsDialogOpen(false)
     } catch (error) {
@@ -215,10 +279,12 @@ export default function ProductosPage() {
 
       <Card>
         <CardHeader className="p-4"><CardTitle>Listado de Productos</CardTitle></CardHeader>
+        {/* SOLUCIÓN AL SCROLL DOBLE: Eliminamos cualquier max-height y dejamos que fluya */}
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex justify-center items-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
           ) : (
+            // Solo overflow-x-auto para responsividad horizontal, sin overflow-y
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -236,7 +302,16 @@ export default function ProductosPage() {
                   <AnimatePresence>
                     {productos.length > 0 ? (
                       productos.map((producto) => (
-                        <motion.tr key={producto.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="border-b">
+                        <motion.tr 
+                          key={producto.id} 
+                          initial={{ opacity: 0 }} 
+                          animate={{ opacity: 1 }} 
+                          exit={{ opacity: 0 }} 
+                          transition={{ duration: 0.2 }} 
+                          // SOLUCIÓN CLIC EN FILA: cursor-pointer y onClick
+                          className="border-b cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => handleOpenDialog(producto)}
+                        >
                           <TableCell className="font-medium">{highlightMatches(producto.nombre, searchTerm)}</TableCell>
                           <TableCell>{highlightMatches(producto.codigo || "-", searchTerm)}</TableCell>
                           <TableCell className="text-muted-foreground">${Number(producto.precio_costo).toLocaleString('es-AR')}</TableCell>
@@ -245,8 +320,24 @@ export default function ProductosPage() {
                           <TableCell>{producto.stock}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(producto)}><Edit className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(producto.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                              {/* Botones con stopPropagation para no disparar el click de la fila */}
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={(e) => { e.stopPropagation(); handleOpenDialog(producto); }}
+                                title="Editar"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={(e) => { e.stopPropagation(); handleDelete(producto.id); }}
+                                className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </motion.tr>
@@ -265,16 +356,27 @@ export default function ProductosPage() {
       {totalPages > 1 && !isLoading && (
         <Pagination>
           <PaginationContent>
-            <PaginationItem><PaginationPrevious onClick={() => currentPage > 1 && loadProductos(currentPage - 1)} className={currentPage === 1 ? "pointer-events-none opacity-50" : undefined} /></PaginationItem>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <PaginationItem key={page}><PaginationLink isActive={page === currentPage} onClick={() => loadProductos(page)}>{page}</PaginationLink></PaginationItem>
-            ))}
-            <PaginationItem><PaginationNext onClick={() => currentPage < totalPages && loadProductos(currentPage + 1)} className={currentPage === totalPages ? "pointer-events-none opacity-50" : undefined} /></PaginationItem>
+            <PaginationItem>
+               <PaginationPrevious 
+                  onClick={() => currentPage > 1 && loadProductos(currentPage - 1)} 
+                  className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"} 
+               />
+            </PaginationItem>
+            
+            {renderPaginationItems()}
+            
+            <PaginationItem>
+               <PaginationNext 
+                  onClick={() => currentPage < totalPages && loadProductos(currentPage + 1)} 
+                  className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"} 
+               />
+            </PaginationItem>
           </PaginationContent>
         </Pagination>
       )}
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        {/* ... DIALOG CONTENT (Igual que antes) ... */}
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>{editingProducto ? "Editar Producto" : "Nuevo Producto"}</DialogTitle>

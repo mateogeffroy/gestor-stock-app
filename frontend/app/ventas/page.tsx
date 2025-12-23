@@ -7,13 +7,20 @@ import { useToast } from "@/components/ui/use-toast"
 import { VentasTable } from "./components/VentasTable"
 import { VentaForm } from "./components/VentaForm"
 import { VentaDetalleDialog } from "./components/VentaDetalleDialog"
-// Importamos los servicios
 import { ventaService } from "@/services/venta-service"
-// Importamos el tipo NuevaVenta desde tus types (ajusta la ruta si es necesario)
 import { NuevaVenta } from "./types" 
 import { cajaService } from "@/services/caja-service"
 import { productoService } from "@/services/producto-service"
 import { Plus } from "lucide-react"
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination"
 
 export default function VentasPage() {
   const { toast } = useToast()
@@ -24,12 +31,18 @@ export default function VentasPage() {
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false)
   const [selectedVenta, setSelectedVenta] = useState<any | null>(null)
 
-  // 1. CARGA DE VENTAS
-  const loadVentas = async () => {
+  // ESTADOS DE PAGINACIÓN
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+
+  // 1. CARGA DE VENTAS (Paginada)
+  const loadVentas = async (page = 1) => {
     setIsLoading(true)
     try {
-      const data = await ventaService.getUltimasVentas(10)
-      setVentas(data)
+      const data = await ventaService.getVentasPaginated(page, 5) // 5 por página
+      setVentas(data.ventas)
+      setTotalPages(data.totalPages)
+      setCurrentPage(page)
     } catch (error) {
       console.error("Error cargando ventas:", error)
       toast({ title: "Error", description: "Fallo al cargar la lista", variant: "destructive" })
@@ -39,8 +52,69 @@ export default function VentasPage() {
   }
 
   useEffect(() => {
-    loadVentas()
+    loadVentas(1)
   }, [])
+
+  // --- LÓGICA DE RENDERIZADO DE PÁGINAS (CORREGIDA) ---
+  const renderPaginationItems = () => {
+    const items = []
+    
+    // 1. Siempre mostrar la Primera Página
+    items.push(
+      <PaginationItem key={1}>
+        <PaginationLink isActive={currentPage === 1} onClick={() => loadVentas(1)}>
+          1
+        </PaginationLink>
+      </PaginationItem>
+    )
+
+    // 2. Calcular rango de páginas centrales
+    let startPage = Math.max(2, currentPage - 1)
+    let endPage = Math.min(totalPages - 1, currentPage + 1)
+
+    // Ajuste visual: Si estamos en la pág 1, mostramos hasta la 3 (si existe)
+    if (currentPage === 1) {
+      endPage = Math.min(totalPages - 1, 3)
+    }
+    // Ajuste visual: Si estamos en la última, mostramos desde la antepenúltima
+    if (currentPage === totalPages) {
+      startPage = Math.max(2, totalPages - 2)
+    }
+
+    // 3. Elipsis Izquierda
+    if (startPage > 2) {
+      items.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>)
+    }
+
+    // 4. Bucle Central
+    for (let i = startPage; i <= endPage; i++) {
+      items.push(
+        <PaginationItem key={i}>
+          <PaginationLink isActive={currentPage === i} onClick={() => loadVentas(i)}>
+            {i}
+          </PaginationLink>
+        </PaginationItem>
+      )
+    }
+
+    // 5. Elipsis Derecha
+    if (endPage < totalPages - 1) {
+      items.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>)
+    }
+
+    // 6. Siempre mostrar la Última Página (si hay más de 1)
+    if (totalPages > 1) {
+      items.push(
+        <PaginationItem key={totalPages}>
+          <PaginationLink isActive={currentPage === totalPages} onClick={() => loadVentas(totalPages)}>
+            {totalPages}
+          </PaginationLink>
+        </PaginationItem>
+      )
+    }
+
+    return items
+  }
 
   // 2. ABRIR/CERRAR FORMULARIO
   const handleOpenForm = (venta?: any) => {
@@ -55,12 +129,15 @@ export default function VentasPage() {
 
   const handleOpenViewDialog = async (venta: any) => {
     try {
-      // Usamos el servicio para traer los detalles (productos anidados)
       const ventaCompleta = await ventaService.getVentaById(venta.id)
       setSelectedVenta(ventaCompleta)
       setIsDetailViewOpen(true)
-    } catch (error) {
-      console.error("Error cargando detalle:", error)
+    } catch (error: any) {
+      // ESTO ES LO IMPORTANTE: JSON.stringify nos mostrará el mensaje oculto
+      console.error("Error DETALLADO:", JSON.stringify(error, null, 2))
+      console.error("Mensaje simple:", error.message)
+      console.error("Hint:", error.hint)
+      
       toast({ title: "Error", description: "No se pudo cargar el detalle", variant: "destructive" })
     }
   }
@@ -70,33 +147,28 @@ export default function VentasPage() {
       try {
         await ventaService.deleteVenta(id)
         toast({ title: "Éxito", description: "Venta eliminada" })
-        loadVentas()
+        
+        // Recargar página actual, o la anterior si era el último item
+        const targetPage = ventas.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
+        loadVentas(targetPage)
       } catch (error: any) {
         toast({ title: "Error", description: error.message, variant: "destructive" })
       }
     }
   }
 
-  // 4. GUARDAR VENTA (CORREGIDO PARA LA NUEVA GRILLA)
   const handleSubmit = async (formData: any) => {
     try {
-      console.log("1. Iniciando guardado de venta...")
-      
-      // A) CAJA
-      console.log("2. Buscando/Creando caja del día...")
       const caja = await cajaService.getCajaDelDia()
-      console.log("   > Caja obtenida ID:", caja?.id)
-      
-      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida. Asegúrate de que el día esté iniciado.")
+      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida.")
 
-      // B) PREPARAR DATOS (Mapeo completo de la nueva grilla)
       const nuevaVenta: NuevaVenta = {
         id_caja: caja.id,
-        id_tipo_venta: formData.id_tipo_venta || 1, // Default: 1 (Orden de Compra)
+        id_tipo_venta: formData.id_tipo_venta || 1, 
         total: formData.total, 
         detalles: formData.detalles.map((d: any) => ({
-          id_producto: d.id_producto, // Puede ser null
-          nombre_producto: d.nombre_producto, // IMPORTANTE: Enviamos el nombre (descripción)
+          id_producto: d.id_producto,
+          nombre_producto: d.nombre_producto,
           precio_unitario: Number(d.precio_unitario),
           cantidad: Number(d.cantidad),
           descuento_individual: Number(d.descuento_individual || 0),
@@ -104,8 +176,6 @@ export default function VentasPage() {
         }))
       }
       
-      console.log("3. Enviando venta a Supabase:", nuevaVenta)
-
       if (editingVenta) {
          toast({ title: "Aviso", description: "Edición no habilitada por seguridad.", variant: "warning" })
       } else {
@@ -114,13 +184,10 @@ export default function VentasPage() {
       }
 
       handleCloseForm()
-      loadVentas()
+      loadVentas(1) // Volver a pág 1 al crear
       
     } catch (error: any) {
-      // LOG CRÍTICO
       console.error("❌ ERROR CRÍTICO AL GUARDAR:", error)
-      console.error("Mensaje:", error.message)
-      
       toast({ 
         title: "Error al guardar", 
         description: error.message || "Revisa la consola (F12) para más detalles.", 
@@ -134,7 +201,6 @@ export default function VentasPage() {
       <VentaForm
         venta={editingVenta}
         onSubmit={handleSubmit}
-        // Conectamos el buscador directo al servicio
         onSearchProductos={(query) => productoService.getProductos(1, 10, query).then(res => res.productos)} 
         onCancel={handleCloseForm}
       />
@@ -154,7 +220,7 @@ export default function VentasPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Últimas Ventas</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Listado de Ventas</CardTitle></CardHeader>
         <CardContent>
           <VentasTable 
             ventas={ventas} 
@@ -165,13 +231,36 @@ export default function VentasPage() {
           />
         </CardContent>
       </Card>
+
+      {/* COMPONENTE DE PAGINACIÓN */}
+      {!isLoading && totalPages > 1 && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious 
+                onClick={() => currentPage > 1 && loadVentas(currentPage - 1)}
+                className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+            
+            {renderPaginationItems()}
+
+            <PaginationItem>
+              <PaginationNext 
+                onClick={() => currentPage < totalPages && loadVentas(currentPage + 1)}
+                className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
       
       <VentaDetalleDialog
         open={isDetailViewOpen}
         onOpenChange={setIsDetailViewOpen}
         venta={selectedVenta}
         onVentaUpdated={()=>{
-          loadVentas();
+          loadVentas(currentPage);
           if (selectedVenta) handleOpenViewDialog(selectedVenta);
         }}
       />
