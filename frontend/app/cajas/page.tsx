@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast"
 // Usamos nuestros tipos y servicio actualizados
 import { Caja, ResumenCaja, VentaConDetalles } from "./types"
 import { cajaService } from "@/services/caja-service"
+import { useEsDemo } from "@/hooks/use-es-demo" // <--- 1. IMPORTAMOS EL HOOK
 
 export default function CajasPage() {
   const { toast } = useToast()
@@ -23,6 +24,9 @@ export default function CajasPage() {
   const [isAlertOpen, setIsAlertOpen] = useState(false)
   const [selectedCaja, setSelectedCaja] = useState<Caja | null>(null)
   
+  // 2. USAMOS EL HOOK
+  const esDemo = useEsDemo()
+
   // Estado para el detalle (modal)
   const [ventasCaja, setVentasCaja] = useState<VentaConDetalles[]>([])
   const [isDetalleLoading, setIsDetalleLoading] = useState(false);
@@ -66,6 +70,16 @@ export default function CajasPage() {
 
   // 3. Cerrar Caja
   const handleCerrarCaja = async () => {
+    // FRENO LÓGICO DEMO
+    if (esDemo) {
+        toast({ 
+            title: "Modo Demo", 
+            description: "Has simulado el cierre de caja. El estado real no cambiará.", 
+        });
+        setIsAlertOpen(false); // Cerramos el modal para simular éxito
+        return;
+    }
+
     if (!cajaDelDiaId) return;
 
     try {
@@ -88,8 +102,7 @@ export default function CajasPage() {
     setIsDialogOpen(true)
     setIsDetalleLoading(true)
     try {
-      // Forzamos el tipo 'any' temporalmente si TS se queja del join complejo, 
-      // pero VentaConDetalles debería funcionar si types.ts está bien
+      // Forzamos el tipo 'any' temporalmente si TS se queja del join complejo
       const ventas: any = await cajaService.getVentasPorCaja(caja.id)
       setVentasCaja(ventas)
     } catch (error) {
@@ -128,6 +141,7 @@ export default function CajasPage() {
       </motion.div>
 
       <div className="flex justify-end">
+        {/* Botón visualmente habilitado siempre */}
         <Button onClick={() => setIsAlertOpen(true)} disabled={resumenDiario.totalDia === 0}>
           Cerrar Caja
         </Button>

@@ -2,7 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import Sidebar from "@/components/sidebar"
+// Quitamos Sidebar de aquí, ya lo maneja ClientLayout
+import ClientLayout from "@/components/ClientLayout" 
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
@@ -22,10 +23,6 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body className={inter.className}>
-        {/* CAMBIO CRÍTICO: 
-           forcedTheme="light" -> OBLIGA al sistema a ser blanco siempre.
-           Ignora el sistema operativo y el localStorage.
-        */}
         <ThemeProvider 
           attribute="class" 
           defaultTheme="light" 
@@ -33,10 +30,11 @@ export default function RootLayout({
           forcedTheme="light" 
           disableTransitionOnChange
         >
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto bg-background p-4 md:p-6">{children}</main>
-          </div>
+          {/* Aquí delegamos la estructura visual al ClientLayout */}
+          <ClientLayout>
+             {children}
+          </ClientLayout>
+          
           <Toaster />
         </ThemeProvider>
       </body>
