@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/ui/use-toast"
 import { VentasTable } from "./components/VentasTable"
 import { VentaForm } from "./components/VentaForm"
@@ -11,7 +10,7 @@ import { ventaService } from "@/services/venta-service"
 import { NuevaVenta } from "./types" 
 import { cajaService } from "@/services/caja-service"
 import { productoService } from "@/services/producto-service"
-import { Plus } from "lucide-react"
+import { Plus, Filter, X, ArrowUpDown } from "lucide-react"
 import {
   Pagination,
   PaginationContent,
@@ -21,6 +20,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
+import { useEsDemo } from "@/hooks/use-es-demo" // <--- 1. IMPORTAMOS EL HOOK
 
 export default function VentasPage() {
   const { toast } = useToast()
@@ -31,15 +31,34 @@ export default function VentasPage() {
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false)
   const [selectedVenta, setSelectedVenta] = useState<any | null>(null)
 
+  // 2. USAMOS EL HOOK
+  const esDemo = useEsDemo()
+
   // ESTADOS DE PAGINACIÓN
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
-  // 1. CARGA DE VENTAS (Paginada)
+  // ESTADOS DE FILTROS Y ORDEN
+  const [mostrarFiltros, setMostrarFiltros] = useState(false)
+  const [fechaFiltro, setFechaFiltro] = useState("")
+  const [horaInicio, setHoraInicio] = useState("")
+  const [horaFin, setHoraFin] = useState("")
+  const [orden, setOrden] = useState<'asc' | 'desc'>('desc') // desc = Más nuevas primero
+
+  // 1. CARGA DE VENTAS (Ahora acepta filtros)
   const loadVentas = async (page = 1) => {
     setIsLoading(true)
     try {
-      const data = await ventaService.getVentasPaginated(page, 5) // 5 por página
+      // Preparamos el objeto de filtros
+      const filtros = {
+        fecha: fechaFiltro || undefined, // Si está vacío, enviamos undefined
+        horaInicio: horaInicio || undefined,
+        horaFin: horaFin || undefined,
+        orden: orden
+      }
+
+      const data = await ventaService.getVentasPaginated(page, 5, filtros)
+      
       setVentas(data.ventas)
       setTotalPages(data.totalPages)
       setCurrentPage(page)
@@ -51,15 +70,19 @@ export default function VentasPage() {
     }
   }
 
+  // Cargar al inicio
   useEffect(() => {
     loadVentas(1)
-  }, [])
+  }, []) 
 
-  // --- LÓGICA DE RENDERIZADO DE PÁGINAS (CORREGIDA) ---
+  // Efecto: Cuando cambia el orden, recargamos automáticamente
+  useEffect(() => {
+    loadVentas(1)
+  }, [orden])
+
+  // --- LÓGICA DE RENDERIZADO DE PÁGINAS ---
   const renderPaginationItems = () => {
     const items = []
-    
-    // 1. Siempre mostrar la Primera Página
     items.push(
       <PaginationItem key={1}>
         <PaginationLink isActive={currentPage === 1} onClick={() => loadVentas(1)}>
@@ -67,26 +90,13 @@ export default function VentasPage() {
         </PaginationLink>
       </PaginationItem>
     )
-
-    // 2. Calcular rango de páginas centrales
     let startPage = Math.max(2, currentPage - 1)
     let endPage = Math.min(totalPages - 1, currentPage + 1)
+    if (currentPage === 1) endPage = Math.min(totalPages - 1, 3)
+    if (currentPage === totalPages) startPage = Math.max(2, totalPages - 2)
 
-    // Ajuste visual: Si estamos en la pág 1, mostramos hasta la 3 (si existe)
-    if (currentPage === 1) {
-      endPage = Math.min(totalPages - 1, 3)
-    }
-    // Ajuste visual: Si estamos en la última, mostramos desde la antepenúltima
-    if (currentPage === totalPages) {
-      startPage = Math.max(2, totalPages - 2)
-    }
+    if (startPage > 2) items.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>)
 
-    // 3. Elipsis Izquierda
-    if (startPage > 2) {
-      items.push(<PaginationItem key="start-ellipsis"><PaginationEllipsis /></PaginationItem>)
-    }
-
-    // 4. Bucle Central
     for (let i = startPage; i <= endPage; i++) {
       items.push(
         <PaginationItem key={i}>
@@ -97,12 +107,8 @@ export default function VentasPage() {
       )
     }
 
-    // 5. Elipsis Derecha
-    if (endPage < totalPages - 1) {
-      items.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>)
-    }
+    if (endPage < totalPages - 1) items.push(<PaginationItem key="end-ellipsis"><PaginationEllipsis /></PaginationItem>)
 
-    // 6. Siempre mostrar la Última Página (si hay más de 1)
     if (totalPages > 1) {
       items.push(
         <PaginationItem key={totalPages}>
@@ -112,11 +118,10 @@ export default function VentasPage() {
         </PaginationItem>
       )
     }
-
     return items
   }
 
-  // 2. ABRIR/CERRAR FORMULARIO
+  // MANEJADORES
   const handleOpenForm = (venta?: any) => {
     setEditingVenta(venta)
     setIsFormOpen(true)
@@ -133,22 +138,24 @@ export default function VentasPage() {
       setSelectedVenta(ventaCompleta)
       setIsDetailViewOpen(true)
     } catch (error: any) {
-      // ESTO ES LO IMPORTANTE: JSON.stringify nos mostrará el mensaje oculto
-      console.error("Error DETALLADO:", JSON.stringify(error, null, 2))
-      console.error("Mensaje simple:", error.message)
-      console.error("Hint:", error.hint)
-      
       toast({ title: "Error", description: "No se pudo cargar el detalle", variant: "destructive" })
     }
   }
 
   const handleDelete = async (id: number) => {
+    // FRENO LÓGICO DEMO
+    if (esDemo) {
+        toast({ 
+            title: "Modo Demo", 
+            description: "Esta acción eliminaría la venta y repondría el stock en la versión real.", 
+        });
+        return;
+    }
+
     if (window.confirm("¿Eliminar venta? Se devolverá el stock.")) {
       try {
         await ventaService.deleteVenta(id)
         toast({ title: "Éxito", description: "Venta eliminada" })
-        
-        // Recargar página actual, o la anterior si era el último item
         const targetPage = ventas.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
         loadVentas(targetPage)
       } catch (error: any) {
@@ -158,6 +165,16 @@ export default function VentasPage() {
   }
 
   const handleSubmit = async (formData: any) => {
+    // FRENO LÓGICO DEMO
+    if (esDemo) {
+        toast({ 
+            title: "Modo Demo", 
+            description: "Puedes simular la venta, pero no se registrará en la base de datos.", 
+        });
+        handleCloseForm(); // Cerramos el formulario para simular éxito
+        return;
+    }
+
     try {
       const caja = await cajaService.getCajaDelDia()
       if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida.")
@@ -177,24 +194,19 @@ export default function VentasPage() {
       }
       
       if (editingVenta) {
-         toast({ title: "Aviso", description: "Edición no habilitada por seguridad.", variant: "warning" })
+          toast({ title: "Aviso", description: "Edición no habilitada.", variant: "warning" })
       } else {
         await ventaService.createVenta(nuevaVenta)
         toast({ title: "¡Venta Exitosa!", description: "Guardada correctamente" })
       }
-
       handleCloseForm()
-      loadVentas(1) // Volver a pág 1 al crear
-      
+      loadVentas(1)
     } catch (error: any) {
-      console.error("❌ ERROR CRÍTICO AL GUARDAR:", error)
-      toast({ 
-        title: "Error al guardar", 
-        description: error.message || "Revisa la consola (F12) para más detalles.", 
-        variant: "destructive" 
-      })
+      toast({ title: "Error al guardar", description: error.message, variant: "destructive" })
     }
   }
+
+  // --- RENDERIZADO ---
 
   if (isFormOpen) {
     return (
@@ -209,30 +221,96 @@ export default function VentasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
-          <p className="text-muted-foreground">Gestiona las ventas de La Cuerda Bebidas</p>
+          <p className="text-muted-foreground">Historial y gestión de transacciones</p>
         </div>
-        <Button onClick={() => handleOpenForm()}>
-          <Plus className="mr-2 h-4 w-4" /> Nueva Venta
-        </Button>
+        
+        <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setMostrarFiltros(!mostrarFiltros)}>
+                <Filter className="mr-2 h-4 w-4" /> Filtros
+            </Button>
+            {/* Botón visualmente habilitado */}
+            <Button onClick={() => handleOpenForm()}>
+                <Plus className="mr-2 h-4 w-4" /> Nueva Venta
+            </Button>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>Listado de Ventas</CardTitle></CardHeader>
-        <CardContent>
-          <VentasTable 
-            ventas={ventas} 
-            onView={handleOpenViewDialog}
-            onEdit={handleOpenForm} 
-            onDelete={handleDelete} 
-            isLoading={isLoading} 
-          />
-        </CardContent>
-      </Card>
+      {/* BARRA DE FILTROS */}
+      {mostrarFiltros && (
+        <div className="bg-muted/40 p-4 rounded-md border flex flex-wrap gap-4 items-end animate-in slide-in-from-top-2">
+            
+            <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Fecha</label>
+                <input 
+                    type="date" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    value={fechaFiltro}
+                    onChange={(e) => setFechaFiltro(e.target.value)}
+                />
+            </div>
 
-      {/* COMPONENTE DE PAGINACIÓN */}
+            <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Desde (Hora)</label>
+                <input 
+                    type="time" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    value={horaInicio}
+                    onChange={(e) => setHoraInicio(e.target.value)}
+                />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium">Hasta (Hora)</label>
+                <input 
+                    type="time" 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                    value={horaFin}
+                    onChange={(e) => setHoraFin(e.target.value)}
+                />
+            </div>
+
+            {/* BOTÓN DE ORDENAMIENTO */}
+            <div className="flex flex-col gap-1.5">
+               <label className="text-sm font-medium">Orden</label>
+               <Button 
+                  variant="outline" 
+                  className="w-[140px] justify-between"
+                  onClick={() => setOrden(orden === 'asc' ? 'desc' : 'asc')}
+               >
+                  {orden === 'desc' ? 'Más recientes' : 'Más antiguas'}
+                  <ArrowUpDown className="h-3 w-3 ml-2 opacity-50" />
+               </Button>
+            </div>
+
+            <div className="flex gap-2 pb-0.5 ml-auto md:ml-0">
+                <Button variant="secondary" onClick={() => loadVentas(1)}>
+                    Aplicar
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => {
+                    setFechaFiltro("")
+                    setHoraInicio("")
+                    setHoraFin("")
+                    setOrden('desc') // Reset a por defecto
+                    setTimeout(() => window.location.reload(), 100) 
+                }} title="Limpiar filtros">
+                    <X className="h-4 w-4" />
+                </Button>
+            </div>
+        </div>
+      )}
+
+      <VentasTable 
+        ventas={ventas} 
+        onView={handleOpenViewDialog}
+        onEdit={handleOpenForm} 
+        onDelete={handleDelete} 
+        isLoading={isLoading} 
+      />
+
+      {/* PAGINACIÓN */}
       {!isLoading && totalPages > 1 && (
         <Pagination>
           <PaginationContent>

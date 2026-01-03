@@ -14,15 +14,20 @@ export interface NuevaVenta {
   detalles: VentaDetalle[];
 }
 
+// Interfaz para los filtros
+interface FiltrosVenta {
+  fecha?: string;
+  horaInicio?: string;
+  horaFin?: string;
+  orden?: 'asc' | 'desc'; // asc = más viejas, desc = más nuevas
+}
+
 export const ventaService = {
-  // Mantenemos esta para el Dashboard (Inicio)
+  // Mantenemos esta para el Dashboard
   async getUltimasVentas(limit = 10) {
     const { data, error } = await supabase
       .from("venta")
-      .select(`
-        *,
-        tipo_venta (descripcion)
-      `)
+      .select(`*, tipo_venta (descripcion)`)
       .order("fecha", { ascending: false })
       .order("hora", { ascending: false })
       .limit(limit);
@@ -31,20 +36,41 @@ export const ventaService = {
     return data || [];
   },
 
-  // Función paginada
-  async getVentasPaginated(page = 1, pageSize = 5) {
+  // --- FUNCIÓN PAGINADA CON FILTROS ---
+  async getVentasPaginated(page = 1, pageSize = 5, filters?: FiltrosVenta) {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    const { data, count, error } = await supabase
+    // 1. Iniciamos la consulta base
+    let query = supabase
       .from("venta")
-      .select(`
-        *,
-        tipo_venta (descripcion)
-      `, { count: 'exact' }) 
-      .order("fecha", { ascending: false })
-      .order("hora", { ascending: false })
+      .select(`*, tipo_venta (descripcion)`, { count: 'exact' });
+
+    // 2. Aplicamos filtros dinámicamente si existen
+    if (filters?.fecha) {
+      query = query.eq('fecha', filters.fecha);
+    }
+
+    if (filters?.horaInicio) {
+      // 'gte' = Greater Than or Equal (Mayor o igual que)
+      query = query.gte('hora', filters.horaInicio);
+    }
+
+    if (filters?.horaFin) {
+      // 'lte' = Less Than or Equal (Menor o igual que)
+      query = query.lte('hora', filters.horaFin);
+    }
+
+    // 3. Aplicamos Ordenamiento
+    // Por defecto es descendente (más nuevas primero)
+    const ascending = filters?.orden === 'asc';
+    
+    query = query
+      .order("fecha", { ascending: ascending })
+      .order("hora", { ascending: ascending })
       .range(from, to);
+
+    const { data, count, error } = await query;
 
     if (error) throw error;
 
@@ -120,7 +146,7 @@ export const ventaService = {
       throw new Error(detallesError.message);
     }
 
-    // Actualizar Stock solo si hay ID de producto
+    // Actualizar Stock
     for (const d of detallesParaInsertar) {
       if (d.id_producto) {
         await supabase.rpc("decrementar_stock", {
