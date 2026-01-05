@@ -4,11 +4,12 @@ import { supabase } from "@/lib/supabase";
 export interface Producto {
   id: number;
   nombre: string;
-  codigo: string | null;      // Antes codigo_barras
-  precio_lista: number;       // Antes precio_final / precio
+  codigo: string | null;
+  precio_lista: number;
   precio_costo: number;
   porcentaje_utilidad: number;
   stock: number;
+  activo: boolean; // <--- Agregado para Soft Delete
 }
 
 export interface ProductoInsert {
@@ -18,23 +19,23 @@ export interface ProductoInsert {
   precio_costo?: number;
   porcentaje_utilidad?: number;
   stock: number;
+  activo?: boolean;
 }
 
 export const productoService = {
   async getProductos(page = 1, pageSize = 5, search = "") {
-    // Calculamos el rango para la paginación de Supabase
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
     let query = supabase
       .from("producto")
-      .select("*", { count: "exact" }) // Pedimos el total de filas para saber cuántas páginas hay
+      .select("*", { count: "exact" })
+      .eq("activo", true) // <--- CRÍTICO: Solo traemos productos no "borrados"
       .range(from, to)
       .order("nombre", { ascending: true });
 
-    // Si hay búsqueda, filtramos (ilike es "case insensitive")
     if (search) {
-      // Buscamos por nombre O por código
+      // Ajustamos la búsqueda para que respete el filtro de activo
       query = query.or(`nombre.ilike.%${search}%,codigo.ilike.%${search}%`);
     }
 
@@ -61,6 +62,7 @@ export const productoService = {
         precio_costo: producto.precio_costo || 0,
         porcentaje_utilidad: producto.porcentaje_utilidad || 0,
         stock: producto.stock,
+        activo: true // Todo producto nuevo nace activo
       })
       .select()
       .single();
@@ -81,17 +83,14 @@ export const productoService = {
     return data;
   },
 
+  // MODIFICADO: Ahora es un borrado lógico
   async deleteProducto(id: number): Promise<void> {
     const { error } = await supabase
       .from("producto")
-      .delete()
+      .update({ activo: false }) // <--- No borramos la fila, la desactivamos
       .eq("id", id);
 
     if (error) {
-      // Manejo amigable si el producto ya se vendió (FK Constraint)
-      if (error.code === '23503') {
-        throw new Error("No se puede borrar este producto porque tiene ventas asociadas. Intenta cambiarle el stock a 0.");
-      }
       throw new Error(error.message);
     }
   },
@@ -100,8 +99,9 @@ export const productoService = {
     const { data, error } = await supabase
       .from("producto")
       .select("*")
-      .eq("codigo", codigo) // Búsqueda exacta
-      .maybeSingle(); // Retorna null si no existe, en vez de error
+      .eq("codigo", codigo)
+      .eq("activo", true) // <--- Solo buscamos entre los activos
+      .maybeSingle();
 
     if (error) throw new Error(error.message);
     return data;

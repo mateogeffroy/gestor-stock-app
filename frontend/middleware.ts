@@ -54,18 +54,35 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // ESTO ES LO IMPORTANTE:
-  // Esta línea verifica la sesión y, si es necesario, la refresca automáticamente.
+  // Verificamos el usuario
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Protección de rutas: Si no hay usuario y no está en login, mandar a login.
-  if (!user && !request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  // DEFINICIÓN DE RUTAS
+  const path = request.nextUrl.pathname
+  
+  const isLoginPage = path.startsWith('/login')
+  
+  // 🚨 LA SOLUCIÓN: Agregamos estas rutas a la lista de "permitidos sin loguearse"
+  const isRecoveryApi = path.startsWith('/api/send-recovery')
+  const isAuthCallback = path.startsWith('/auth/callback')
+  const isUpdatePassword = path.startsWith('/update-password') // También pública o semipública para el reset
+
+  // 1. Si NO hay usuario...
+  if (!user) {
+    // ... Y NO estamos en ninguna de las rutas públicas permitidas...
+    if (!isLoginPage && !isRecoveryApi && !isAuthCallback && !isUpdatePassword) {
+        // ... Entonces sí, mandalo al login.
+        const url = request.nextUrl.clone()
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
+    }
   }
 
-  // Si ya hay usuario y quiere entrar al login, mandarlo al inicio.
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/', request.url))
+  // 2. Si HAY usuario y está en login, mandarlo al inicio (o ventas)
+  if (user && isLoginPage) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/ventas' 
+    return NextResponse.redirect(url)
   }
 
   return response
@@ -73,13 +90,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Coincidir con todas las rutas excepto:
-     * - _next/static (archivos estáticos)
-     * - _next/image (optimización de imágenes)
-     * - favicon.ico (icono del navegador)
-     * - Imágenes (svg, png, jpg, etc)
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

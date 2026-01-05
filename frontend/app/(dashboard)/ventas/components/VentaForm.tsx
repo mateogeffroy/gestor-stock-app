@@ -6,13 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { ProductSearch } from "./ProductSearch"
 import { DetalleVentaTable } from "./DetalleVentaTable"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, User, Loader2 } from "lucide-react" // Añadido Loader2
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface VentaFormProps {
   venta?: any
-  onSubmit: (ventaData: NuevaVentaState) => void
+  onSubmit: (ventaData: any) => Promise<void> | void // Ajustado para soportar promesas
   onSearchProductos: (term: string) => Promise<Producto[]>
   onCancel: () => void
 }
@@ -26,22 +28,28 @@ const initialFormState: NuevaVentaState = {
 export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: VentaFormProps) {
   const detailIdCounter = useRef(1);
   const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>(initialFormState);
+  
+  // --- ESTADO PARA CONTROLAR EL DOBLE SUBMIT ---
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Efecto para cargar datos en caso de edición
+  // --- ESTADOS DE CLIENTE ---
+  const [tipoCliente, setTipoCliente] = useState<"final" | "responsable">("final")
+  const [clienteNombre, setClienteNombre] = useState("")
+  const [clienteCuit, setClienteCuit] = useState("")
+  const [clienteDireccion, setClienteDireccion] = useState("")
+
   useEffect(() => {
     if (venta) {
       setNuevaVenta({
         id_tipo_venta: venta.id_tipo_venta || 1,
         total: venta.total,
-        detalles: [] // Si necesitas editar histórico, aquí deberías mapear
+        detalles: [] 
       });
     }
   }, [venta]);
 
-  // Agregar producto desde el buscador
   const handleSelectProducto = (producto: Producto) => {
     setNuevaVenta(prev => {
-      // Precio que usaremos (precio_final si existe, sino precio_lista)
       const precioVenta = Number(producto.precio_final || producto.precio_lista);
       
       const nuevoDetalle: DetalleVentaForm = {
@@ -52,14 +60,13 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
         precio_unitario: precioVenta,
         cantidad: 1,
         descuento_individual: 0,
-        subtotal: precioVenta, // 1 * precio - 0% desc
+        subtotal: precioVenta, 
       };
 
-      return { ...prev, detalles: [nuevoDetalle, ...prev.detalles] }; // Agregamos al principio para verlo fácil
+      return { ...prev, detalles: [nuevoDetalle, ...prev.detalles] }; 
     });
   };
 
-  // Agregar item manual (sin ID)
   const handleCreateNonExistentProduct = (productName: string) => {
       setNuevaVenta(prev => {
           const nuevoDetalle: DetalleVentaForm = {
@@ -75,35 +82,28 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
       });
   };
 
-  // --- LÓGICA MATEMÁTICA BIDIRECCIONAL ---
   const handleDetalleChange = (lineItemId: number, field: keyof DetalleVentaForm, value: number) => {
-    // Validar NaN
     if (isNaN(value)) value = 0;
 
     setNuevaVenta(prev => {
       const detallesActualizados = prev.detalles.map(d => {
         if (d.lineItemId !== lineItemId) return d;
 
-        // Copia del detalle para modificar
         const updated = { ...d, [field]: value };
 
-        // 1. Si cambia CANTIDAD o PRECIO -> Recalcula SUBTOTAL manteniendo el DESCUENTO
         if (field === 'cantidad' || field === 'precio_unitario') {
            const base = updated.precio_unitario * updated.cantidad;
            updated.subtotal = base * (1 - (updated.descuento_individual / 100));
         }
 
-        // 2. Si cambia DESCUENTO -> Recalcula SUBTOTAL
         if (field === 'descuento_individual') {
            const base = updated.precio_unitario * updated.cantidad;
            updated.subtotal = base * (1 - (value / 100));
         }
 
-        // 3. Si cambia SUBTOTAL -> Recalcula DESCUENTO (Inversa)
         if (field === 'subtotal') {
            const base = updated.precio_unitario * updated.cantidad;
            if (base > 0) {
-             // Fórmula: Descuento = (1 - (Subtotal / Base)) * 100
              const nuevoDescuento = (1 - (value / base)) * 100;
              updated.descuento_individual = Number(nuevoDescuento.toFixed(2));
            } else {
@@ -129,17 +129,41 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
     return nuevaVenta.detalles.reduce((sum, detalle) => sum + detalle.subtotal, 0);
   }, [nuevaVenta.detalles]);
 
-  const handleFinalSubmit = () => {
+  const handleFinalSubmit = async () => {
     if (nuevaVenta.detalles.length === 0) {
-        // Podrías usar un toast aquí
         alert("La venta debe tener al menos un producto.");
         return;
     }
-    onSubmit({
-      ...nuevaVenta,
-      total: totalVenta,
-      detalles: nuevaVenta.detalles
-    });
+
+    if (tipoCliente === 'responsable' && clienteCuit.length < 11) {
+        alert("El CUIT debe tener 11 dígitos.");
+        return;
+    }
+
+    // Bloqueo de seguridad
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+
+      await onSubmit({
+        ...nuevaVenta,
+        total: totalVenta,
+        detalles: nuevaVenta.detalles,
+        cliente_nombre: tipoCliente === 'final' ? "Consumidor Final" : clienteNombre,
+        cliente_cuit: tipoCliente === 'final' ? null : clienteCuit,
+        cliente_direccion: tipoCliente === 'final' ? null : clienteDireccion,
+      });
+
+      // Nota: Si el onSubmit redirige fuera de la página, el estado se limpiará solo.
+      // Si te quedas en la misma página, quizás quieras poner setIsSubmitting(false) 
+      // y limpiar el formulario aquí.
+
+    } catch (error) {
+      console.error("Error al confirmar venta:", error);
+      alert("Hubo un error al procesar la venta.");
+      setIsSubmitting(false); // Rehabilitamos el botón solo en caso de error
+    }
   }
 
   return (
@@ -153,6 +177,7 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
           </div>
           <div className="w-full sm:w-[200px]">
             <Select
+              disabled={isSubmitting}
               value={String(nuevaVenta.id_tipo_venta)}
               onValueChange={(value) => setNuevaVenta(prev => ({ ...prev, id_tipo_venta: Number(value) }))}
             >
@@ -167,6 +192,62 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
       </CardHeader>
       
       <CardContent className="px-4 sm:px-6 space-y-6">
+        {/* --- DATOS DEL CLIENTE --- */}
+        <div className="bg-slate-50 border rounded-lg p-4">
+             <Label className="flex items-center gap-2 mb-3 font-semibold text-slate-700">
+                <User className="h-4 w-4" /> Datos del Cliente
+             </Label>
+             
+             <Tabs value={tipoCliente} onValueChange={(v) => setTipoCliente(v as any)} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 max-w-md mb-3">
+                    <TabsTrigger value="final" disabled={isSubmitting}>Consumidor Final</TabsTrigger>
+                    <TabsTrigger value="responsable" disabled={isSubmitting}>Cliente con CUIT</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="final">
+                    <p className="text-sm text-muted-foreground italic">
+                        Venta anónima a consumidor final. No requiere datos adicionales.
+                    </p>
+                </TabsContent>
+                
+                <TabsContent value="responsable" className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <Label className="text-xs">CUIT (Sin guiones)</Label>
+                            <Input 
+                                disabled={isSubmitting}
+                                placeholder="20123456789" 
+                                value={clienteCuit}
+                                onChange={e => setClienteCuit(e.target.value)}
+                                maxLength={11}
+                                className="bg-white"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Nombre / Razón Social</Label>
+                            <Input 
+                                disabled={isSubmitting}
+                                placeholder="Ej: Empresa S.A." 
+                                value={clienteNombre}
+                                onChange={e => setClienteNombre(e.target.value)}
+                                className="bg-white"
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                            <Label className="text-xs">Dirección (Opcional)</Label>
+                            <Input 
+                                disabled={isSubmitting}
+                                placeholder="Calle Falsa 123" 
+                                value={clienteDireccion}
+                                onChange={e => setClienteDireccion(e.target.value)}
+                                className="bg-white"
+                            />
+                    </div>
+                </TabsContent>
+             </Tabs>
+        </div>
+
         {/* BUSCADOR */}
         <div className="bg-muted/30 p-4 rounded-lg border">
           <Label className="mb-2 block text-xs font-semibold uppercase text-muted-foreground">Agregar Productos</Label>
@@ -190,7 +271,7 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
 
       <CardFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t bg-muted/10 p-6">
         <div className="flex items-center gap-2 text-muted-foreground">
-             <span className="text-sm">Items: {nuevaVenta.detalles.length}</span>
+              <span className="text-sm">Items: {nuevaVenta.detalles.length}</span>
         </div>
 
         <div className="flex flex-col sm:flex-row items-center gap-6 w-full sm:w-auto">
@@ -200,11 +281,30 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
             </div>
             
             <div className="flex gap-2 w-full sm:w-auto">
-                <Button variant="outline" size="lg" onClick={onCancel} className="flex-1 sm:flex-none">
-                <ArrowLeft className="mr-2 h-4 w-4" /> Cancelar
+                <Button 
+                  variant="outline" 
+                  size="lg" 
+                  onClick={onCancel} 
+                  disabled={isSubmitting} 
+                  className="flex-1 sm:flex-none"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" /> {isSubmitting ? "Espere..." : "Cancelar"}
                 </Button>
-                <Button onClick={handleFinalSubmit} size="lg" className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white font-bold px-8">
-                CONFIRMAR VENTA
+
+                <Button 
+                  onClick={handleFinalSubmit} 
+                  size="lg" 
+                  disabled={isSubmitting}
+                  className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white font-bold px-8"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      PROCESANDO...
+                    </>
+                  ) : (
+                    "CONFIRMAR VENTA"
+                  )}
                 </Button>
             </div>
         </div>

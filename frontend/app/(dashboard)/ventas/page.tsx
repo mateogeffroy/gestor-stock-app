@@ -20,7 +20,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-import { useEsDemo } from "@/hooks/use-es-demo" // <--- 1. IMPORTAMOS EL HOOK
+import { useEsDemo } from "@/hooks/use-es-demo"
 
 export default function VentasPage() {
   const { toast } = useToast()
@@ -31,27 +31,22 @@ export default function VentasPage() {
   const [isDetailViewOpen, setIsDetailViewOpen] = useState(false)
   const [selectedVenta, setSelectedVenta] = useState<any | null>(null)
 
-  // 2. USAMOS EL HOOK
   const esDemo = useEsDemo()
 
-  // ESTADOS DE PAGINACIÓN
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
-  // ESTADOS DE FILTROS Y ORDEN
   const [mostrarFiltros, setMostrarFiltros] = useState(false)
   const [fechaFiltro, setFechaFiltro] = useState("")
   const [horaInicio, setHoraInicio] = useState("")
   const [horaFin, setHoraFin] = useState("")
-  const [orden, setOrden] = useState<'asc' | 'desc'>('desc') // desc = Más nuevas primero
+  const [orden, setOrden] = useState<'asc' | 'desc'>('desc')
 
-  // 1. CARGA DE VENTAS (Ahora acepta filtros)
   const loadVentas = async (page = 1) => {
     setIsLoading(true)
     try {
-      // Preparamos el objeto de filtros
       const filtros = {
-        fecha: fechaFiltro || undefined, // Si está vacío, enviamos undefined
+        fecha: fechaFiltro || undefined,
         horaInicio: horaInicio || undefined,
         horaFin: horaFin || undefined,
         orden: orden
@@ -63,24 +58,21 @@ export default function VentasPage() {
       setTotalPages(data.totalPages)
       setCurrentPage(page)
     } catch (error) {
-      console.error("Error cargando ventas:", error)
+      console.error(error)
       toast({ title: "Error", description: "Fallo al cargar la lista", variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Cargar al inicio
   useEffect(() => {
     loadVentas(1)
   }, []) 
 
-  // Efecto: Cuando cambia el orden, recargamos automáticamente
   useEffect(() => {
     loadVentas(1)
   }, [orden])
 
-  // --- LÓGICA DE RENDERIZADO DE PÁGINAS ---
   const renderPaginationItems = () => {
     const items = []
     items.push(
@@ -121,7 +113,6 @@ export default function VentasPage() {
     return items
   }
 
-  // MANEJADORES
   const handleOpenForm = (venta?: any) => {
     setEditingVenta(venta)
     setIsFormOpen(true)
@@ -143,7 +134,6 @@ export default function VentasPage() {
   }
 
   const handleDelete = async (id: number) => {
-    // FRENO LÓGICO DEMO
     if (esDemo) {
         toast({ 
             title: "Modo Demo", 
@@ -159,30 +149,71 @@ export default function VentasPage() {
         const targetPage = ventas.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
         loadVentas(targetPage)
       } catch (error: any) {
-        toast({ title: "Error", description: error.message, variant: "destructive" })
+        toast({ 
+            title: "Operación Denegada", 
+            description: "No se pueden borrar ventas de cajas ya cerradas.", 
+            variant: "destructive" 
+        })
       }
     }
   }
 
   const handleSubmit = async (formData: any) => {
-    // FRENO LÓGICO DEMO
     if (esDemo) {
         toast({ 
             title: "Modo Demo", 
-            description: "Puedes simular la venta, pero no se registrará en la base de datos.", 
+            description: "Simulación de venta demo.", 
         });
-        handleCloseForm(); // Cerramos el formulario para simular éxito
+        handleCloseForm();
         return;
     }
 
+    setIsLoading(true) 
+
     try {
-      const caja = await cajaService.getCajaDelDia()
-      if (!caja || !caja.id) throw new Error("No se pudo obtener una caja válida.")
+      const caja = await cajaService.asegurarCajaAbierta()
+      if (!caja || !caja.id) throw new Error("Debes abrir la caja antes de vender.")
+
+      let datosAfip = null;
+      
+      try {
+          const resAfip = await fetch('/api/afip/emitir', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                  total: formData.total,
+                  cuitCliente: 0 
+              })
+          })
+          
+          const jsonAfip = await resAfip.json()
+          
+          if (jsonAfip.success) {
+              datosAfip = jsonAfip.data
+              toast({ 
+                title: "Factura Autorizada ✅", 
+                description: `CAE: ${datosAfip.cae} - Comprobante: ${datosAfip.nro_comprobante}`,
+                duration: 5000 
+              })
+          } else {
+              throw new Error("AFIP rechazó la facturación: " + jsonAfip.error)
+          }
+
+      } catch (afipError: any) {
+          console.error("Error facturación:", afipError)
+          throw new Error("No se pudo emitir factura. Venta cancelada.")
+      }
 
       const nuevaVenta: NuevaVenta = {
         id_caja: caja.id,
         id_tipo_venta: formData.id_tipo_venta || 1, 
         total: formData.total, 
+        
+        tipo_comprobante: datosAfip?.tipo_comprobante || 'Ticket',
+        nro_comprobante: datosAfip?.nro_comprobante || null,
+        cae: datosAfip?.cae || null,
+        vto_cae: datosAfip?.vto_cae || null,
+
         detalles: formData.detalles.map((d: any) => ({
           id_producto: d.id_producto,
           nombre_producto: d.nombre_producto,
@@ -197,16 +228,19 @@ export default function VentasPage() {
           toast({ title: "Aviso", description: "Edición no habilitada.", variant: "warning" })
       } else {
         await ventaService.createVenta(nuevaVenta)
-        toast({ title: "¡Venta Exitosa!", description: "Guardada correctamente" })
+        toast({ title: "¡Venta Registrada!", description: "Guardada con éxito." })
       }
+      
       handleCloseForm()
-      loadVentas(1)
+      loadVentas(1) 
+
     } catch (error: any) {
-      toast({ title: "Error al guardar", description: error.message, variant: "destructive" })
+      console.error(error)
+      toast({ title: "Error al procesar", description: error.message, variant: "destructive" })
+    } finally {
+        setIsLoading(false) 
     }
   }
-
-  // --- RENDERIZADO ---
 
   if (isFormOpen) {
     return (
@@ -231,14 +265,12 @@ export default function VentasPage() {
             <Button variant="outline" onClick={() => setMostrarFiltros(!mostrarFiltros)}>
                 <Filter className="mr-2 h-4 w-4" /> Filtros
             </Button>
-            {/* Botón visualmente habilitado */}
             <Button onClick={() => handleOpenForm()}>
                 <Plus className="mr-2 h-4 w-4" /> Nueva Venta
             </Button>
         </div>
       </div>
 
-      {/* BARRA DE FILTROS */}
       {mostrarFiltros && (
         <div className="bg-muted/40 p-4 rounded-md border flex flex-wrap gap-4 items-end animate-in slide-in-from-top-2">
             
@@ -272,7 +304,6 @@ export default function VentasPage() {
                 />
             </div>
 
-            {/* BOTÓN DE ORDENAMIENTO */}
             <div className="flex flex-col gap-1.5">
                <label className="text-sm font-medium">Orden</label>
                <Button 
@@ -293,7 +324,7 @@ export default function VentasPage() {
                     setFechaFiltro("")
                     setHoraInicio("")
                     setHoraFin("")
-                    setOrden('desc') // Reset a por defecto
+                    setOrden('desc') 
                     setTimeout(() => window.location.reload(), 100) 
                 }} title="Limpiar filtros">
                     <X className="h-4 w-4" />
@@ -310,7 +341,6 @@ export default function VentasPage() {
         isLoading={isLoading} 
       />
 
-      {/* PAGINACIÓN */}
       {!isLoading && totalPages > 1 && (
         <Pagination>
           <PaginationContent>

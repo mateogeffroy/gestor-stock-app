@@ -1,19 +1,15 @@
-import type React from "react"
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import "./globals.css"
-// Quitamos Sidebar de aquí, ya lo maneja ClientLayout
-import ClientLayout from "@/components/ClientLayout" 
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+import { BusinessProvider } from "@/context/business-context"; 
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "La Cuerda Bebidas",
-  description: "Sistema de gestión para La Cuerda Bebidas",
-  generator: 'v0.dev'
-}
+  title: "Gestor de Stock",
+  description: "Sistema de gestión",
+};
 
 export default function RootLayout({
   children,
@@ -21,22 +17,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" suppressHydrationWarning>
+    <html lang="es">
       <body className={inter.className}>
-        <ThemeProvider 
-          attribute="class" 
-          defaultTheme="light" 
-          enableSystem={false}
-          forcedTheme="light" 
-          disableTransitionOnChange
-        >
-          {/* Aquí delegamos la estructura visual al ClientLayout */}
-          <ClientLayout>
-             {children}
-          </ClientLayout>
+        {/* PROVIDERS GLOBALES (Mantener aquí) */}
+        <BusinessProvider>
           
-          <Toaster />
-        </ThemeProvider>
+          {/* AQUÍ YA NO ESTÁ ClientLayout. Solo renderiza el hijo directo. */}
+          {children}
+          
+        </BusinessProvider>
+
+        <Toaster />
       </body>
     </html>
   );
