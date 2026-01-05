@@ -4,34 +4,56 @@ export interface Caja {
   id: number;
   fecha: string;
   total: number;
+  estado: 'abierta' | 'cerrada';
+}
+
+export interface ResumenCaja {
+  totalDia: number;
+  totalFacturasB: number;
+  totalOrdenesCompra: number;
+  cantidadVentas: number;
 }
 
 export const cajaService = {
-  // 1. OBTENER LA CAJA DE HOY (Tu lógica corregida)
-  async getCajaDelDia() {
-    const hoy = new Date().toLocaleDateString('en-CA'); // Formato YYYY-MM-DD
-
-    // Paso A: Preguntar si existe
+  // 1a. SOLO CONSULTA (Para la pantalla de Cajas)
+  async obtenerCajaAbierta() {
+    const hoy = new Date().toLocaleDateString('en-CA');
     const { data, error } = await supabase
       .from("caja")
       .select("*")
       .eq("fecha", hoy)
-      .order('id', { ascending: false }) 
-      .limit(1) 
-      .maybeSingle(); 
+      .eq("estado", "abierta")
+      .limit(1)
+      .maybeSingle();
 
-    if (error) throw error;
-    if (data) return data;
+    if (error) {
+      console.error("Error al obtener caja abierta:", error);
+      throw error;
+    }
+    return data; 
+  },
 
-    // Paso B: Si no existe, crearla
-    console.log("No hay caja hoy. Creando una nueva...");
+  // 1b. ASEGURA Y CREA (Para el formulario de Ventas)
+  async asegurarCajaAbierta() {
+    const cajaExistente = await this.obtenerCajaAbierta();
+    
+    if (cajaExistente) return cajaExistente;
+
+    const hoy = new Date().toLocaleDateString('en-CA');
     const { data: nuevaCaja, error: errorCrear } = await supabase
       .from("caja")
-      .insert({ fecha: hoy, total: 0 })
+      .insert({ 
+        fecha: hoy, 
+        total: 0, 
+        estado: 'abierta' 
+      })
       .select()
       .single();
     
-    if (errorCrear) throw errorCrear;
+    if (errorCrear) {
+      console.error("Error al crear caja de emergencia:", errorCrear);
+      throw errorCrear;
+    }
     return nuevaCaja;
   },
 
@@ -39,7 +61,10 @@ export const cajaService = {
   async cerrarCaja(idCaja: number, totalCalculado: number) {
     const { data, error } = await supabase
       .from("caja")
-      .update({ total: totalCalculado })
+      .update({ 
+        total: totalCalculado, 
+        estado: 'cerrada' 
+      })
       .eq("id", idCaja)
       .select()
       .single();
@@ -48,8 +73,8 @@ export const cajaService = {
     return data;
   },
 
-  // 3. OBTENER RESUMEN
-  async getResumenDiario(idCaja: number) {
+  // 3. OBTENER RESUMEN DIARIO
+  async getResumenDiario(idCaja: number): Promise<ResumenCaja> {
     const { data: ventas, error } = await supabase
       .from("venta")
       .select("total, id_tipo_venta")
@@ -57,16 +82,15 @@ export const cajaService = {
 
     if (error) throw error;
 
-    const totalDia = ventas.reduce((acc, v) => acc + v.total, 0);
+    const totalDia = ventas.reduce((acc, v) => acc + Number(v.total), 0);
     
-    // Ajusta los IDs según tu tabla 'tipo_venta' (1=General, 2=Factura B, etc.)
     const totalFacturasB = ventas
         .filter(v => v.id_tipo_venta === 2) 
-        .reduce((acc, v) => acc + v.total, 0);
+        .reduce((acc, v) => acc + Number(v.total), 0);
         
     const totalOrdenesCompra = ventas
-        .filter(v => v.id_tipo_venta === 3)
-        .reduce((acc, v) => acc + v.total, 0);
+        .filter(v => v.id_tipo_venta === 1)
+        .reduce((acc, v) => acc + Number(v.total), 0);
 
     return {
       totalDia,
@@ -76,24 +100,20 @@ export const cajaService = {
     };
   },
 
-  // --- AGREGADO: 4. HISTORIAL DE CAJAS ---
+  // 4. HISTORIAL DE CAJAS (Filtrado solo para CERRADAS)
   async getCajas() {
-    const hoy = new Date().toLocaleDateString('en-CA'); // Fecha de hoy YYYY-MM-DD
-
     const { data, error } = await supabase
-      .from("caja")
-      .select("*")
-      .neq("fecha", hoy) // <--- ESTO ES LO NUEVO: Excluir la caja de hoy
-      .order("fecha", { ascending: false })
-      .order("id", { ascending: false });
-
+      .from('caja')
+      .select('*')
+      .eq('estado', 'cerrada') // <--- SOLO TRAEMOS LAS CERRADAS
+      .order('fecha', { ascending: false })
+      .order('id', { ascending: false });
+    
     if (error) throw error;
-    return data || [];
+    return data as Caja[];
   },
 
-  
-
-  // --- AGREGADO: 5. DETALLE DE VENTAS DE UNA CAJA ---
+  // 5. DETALLE DE VENTAS DE UNA CAJA
   async getVentasPorCaja(idCaja: number) {
     const { data, error } = await supabase
       .from("venta")
@@ -101,6 +121,7 @@ export const cajaService = {
         *,
         tipo_venta (descripcion),
         venta_detalle (
+          id,
           cantidad,
           subtotal,
           producto (nombre, precio_lista)

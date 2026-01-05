@@ -1,23 +1,25 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import Sidebar from "./sidebar" // Asegúrate que la ruta sea correcta a tu componente Sidebar
+import Sidebar from "./sidebar" 
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   
-  // Lista de rutas donde NO queremos sidebar
   const hiddenSidebarRoutes = ["/login"]
   const showSidebar = !hiddenSidebarRoutes.includes(pathname)
 
   return (
+    // 1. El PADRE define la altura fija de la ventana (h-screen) y evita scroll global
     <div className="flex h-screen overflow-hidden">
-      {/* Renderizamos Sidebar solo si no estamos en login */}
+      
       {showSidebar && <Sidebar />}
       
-      {/* El contenido principal ocupa el resto del espacio */}
-      <main className="flex-1 bg-slate-50">
-        <div className="h-full p-8">
+      {/* 2. EL MAIN debe tener overflow-y-auto para scrollear SU contenido independientemente */}
+      <main className="flex-1 overflow-y-auto bg-slate-50">
+        
+        {/* Quitamos h-full de aquí para que el contenido pueda crecer hacia abajo libremente */}
+        <div className="p-8">
            {children}
         </div>
       </main>

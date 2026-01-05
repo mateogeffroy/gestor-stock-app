@@ -53,20 +53,34 @@ export default function CajasPage() {
     }
   }
 
-  // 2. Cargar Resumen del Día Actual
   const loadResumenDiario = async () => {
-    try {
-      // Primero buscamos cuál es la caja de hoy
-      const cajaHoy = await cajaService.getCajaDelDia();
+  try {
+    const cajaHoy = await cajaService.obtenerCajaAbierta();
+    
+    if (cajaHoy) {
       setCajaDelDiaId(cajaHoy.id);
-
-      // Luego calculamos el resumen
-      const data = await cajaService.getResumenDiario(cajaHoy.id)
-      setResumenDiario(data)
-    } catch (error) {
-      console.error("Error al cargar resumen diario:", error)
+      const data = await cajaService.getResumenDiario(cajaHoy.id);
+      setResumenDiario(data);
+    } else {
+      // Si no hay caja abierta, reseteamos los contadores a 0
+      setCajaDelDiaId(null);
+      setResumenDiario({ totalOrdenesCompra: 0, totalFacturasB: 0, totalDia: 0 });
     }
+  } catch (error) {
+    console.error("Error al cargar resumen diario:", error);
   }
+};
+
+  // 3. Efecto de carga inicial
+  useEffect(() => {
+    const initializeData = async () => {
+      setIsLoading(true);
+      await loadCajas(); // Primero cargamos el historial
+      await loadResumenDiario(); // Luego el resumen
+      setIsLoading(false);
+    };
+    initializeData();
+  }, []);
 
   // 3. Cerrar Caja
   const handleCerrarCaja = async () => {
