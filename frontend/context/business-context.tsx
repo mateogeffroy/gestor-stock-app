@@ -42,11 +42,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (data) {
-        setBusinessName(data.business_name || "Mi Negocio")
+        setBusinessName(data.business_name || "") 
         setLogoUrl(data.logo_url)
       } else {
-        // Fallback si no existe perfil aún
-        setBusinessName("Mi Negocio")
+        // CAMBIO: Fallback si no existe perfil aún
+        setBusinessName("")
       }
       
     } catch (error) {

@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ShoppingCart, Loader2 } from "lucide-react"
-// CAMBIO 1: Importamos el servicio nuevo en lugar de las actions viejas
+// CAMBIO 1: Agregamos CircleHelp a los imports
+import { ShoppingCart, Loader2, CircleHelp } from "lucide-react"
 import { ventaService } from "@/services/venta-service"
 
 export default function Home() {
@@ -13,15 +13,13 @@ export default function Home() {
   const [discount, setDiscount] = useState("")
   const [discountedTotal, setDiscountedTotal] = useState(0)
 
-  // CAMBIO 2: Usamos 'any' o definimos un tipo simple localmente para evitar conflictos de importación
   const [ultimasVentas, setUltimasVentas] = useState<any[]>([])
   const [isVentasLoading, setIsVentasLoading] = useState(true)
 
   useEffect(() => {
     const cargarVentas = async () => {
       try {
-        // CAMBIO 3: Usamos el servicio nuevo
-        const data = await ventaService.getUltimasVentas(5); // Pedimos solo 5
+        const data = await ventaService.getUltimasVentas(5);
         setUltimasVentas(data);
       } catch (error) {
         console.error("Error al cargar las últimas ventas:", error);
@@ -52,6 +50,7 @@ export default function Home() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {/* TARJETA DE ÚLTIMAS VENTAS */}
         <Card>
           <CardHeader>
             <CardTitle>Últimas Ventas</CardTitle>
@@ -70,13 +69,11 @@ export default function Home() {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium">Venta #{venta.id}</p>
-                      {/* CAMBIO 4: Adaptamos campos a Supabase (fecha y hora separados) */}
                       <p className="text-xs text-muted-foreground">
                         {new Date(venta.fecha + "T" + venta.hora).toLocaleString('es-AR')}
                       </p>
                     </div>
                     <div className="text-sm font-bold">
-                      {/* CAMBIO 5: 'total' en lugar de 'importe_total' */}
                       ${Number(venta.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}
                     </div>
                   </div>
@@ -90,9 +87,31 @@ export default function Home() {
           </CardContent>
         </Card>
 
+        {/* TARJETA CALCULADORA DE DESCUENTO CON TOOLTIP */}
         <Card>
           <CardHeader>
-            <CardTitle>Calculadora de Descuento</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Calculadora de Descuento
+              
+              {/* --- INICIO TOOLTIP (MODIFICADO PARA QUE SALGA ABAJO) --- */}
+              <div className="relative group flex items-center">
+                <CircleHelp className="h-4 w-4 text-muted-foreground cursor-help hover:text-primary transition-colors" />
+                
+                {/* Globo de diálogo: Cambiamos 'bottom-full mb-2' por 'top-full mt-2' */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:block w-64 p-3 bg-slate-900 text-white text-xs rounded-md shadow-lg z-50 pointer-events-none">
+                  <p className="font-bold mb-1">¿Cómo funciona?</p>
+                  <p>Ingresa el monto total sin descuento en "Total ($)" y el porcentaje de descuento en "Descuento (%)". El sistema calculará automáticamente el precio final a cobrar.</p>
+                  <br />
+                  <p>Fórmula:</p>
+                  <p>Descontado=Total-(Total*Descuento/100)</p>
+                  
+                  {/* Triángulo decorativo: Ahora va arriba (bottom-full) y apunta hacia arriba (border-b) */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900"></div>
+                </div>
+              </div>
+              {/* --- FIN TOOLTIP --- */}
+
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
