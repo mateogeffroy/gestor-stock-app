@@ -32,7 +32,7 @@ export default function UpdatePasswordPage() {
         const refreshToken = params.get('refresh_token')
         const error = params.get('error')
 
-        // CASO A: Error explícito en URL
+        // CASO A: Error explícito en URLa
         if (error || (hash && hash.includes("error_code=otp_expired"))) {
             setVerifying(false)
             setValidSession(false)
