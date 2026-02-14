@@ -7,7 +7,7 @@ import { BusinessProvider } from "@/context/business-context";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Gestor de Stock",
+  title: "Mi comercio",
   description: "Sistema de gestión",
 };
 

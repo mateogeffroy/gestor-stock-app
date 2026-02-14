@@ -3,15 +3,16 @@
 import { cn } from "@/lib/utils"
 import { Home, ShoppingCart, Package, DollarSign, Menu, X, User, LogOut } from "lucide-react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation" // Añadido useRouter
+import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 import { useBusiness } from "@/context/business-context"
 
+// Asegúrate de que los colores aquí sean los que definimos (text-primary si quieres todo naranja)
 const routes = [
-  { label: "Inicio", icon: Home, href: "/", color: "text-sky-500" },
+  { label: "Inicio", icon: Home, href: "/", color: "text-primary" },
   { label: "Ventas", icon: ShoppingCart, href: "/ventas", color: "text-violet-500" },
   { label: "Productos", icon: Package, href: "/productos", color: "text-pink-700" },
   { label: "Cajas", icon: DollarSign, href: "/cajas", color: "text-orange-500" },
@@ -19,27 +20,19 @@ const routes = [
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const router = useRouter() // Inicializado
+  const router = useRouter()
   const { toast } = useToast()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const { businessName, logoUrl } = useBusiness()
 
   const handleLogout = async () => {
     try {
-      // 1. Cerrar sesión en Supabase
       await supabase.auth.signOut()
-      
       toast({ title: "Sesión cerrada", description: "Hasta luego 👋" })
-
-      // 2. Limpieza y redirección
-      // refresh() limpia la caché de los Server Components
       router.refresh()
-      
-      // 3. Redirección total para limpiar el estado global de React
       setTimeout(() => {
         window.location.href = "/login"
       }, 300)
-      
     } catch (error) {
       console.error("Error al cerrar sesión:", error)
       window.location.href = "/login"
@@ -49,15 +42,13 @@ export default function Sidebar() {
   const renderContent = () => (
     <div className="flex h-full flex-col bg-background">
       <div className="flex h-20 items-center px-6 gap-3 overflow-hidden border-b">
-        {logoUrl && (
-          <img 
-            src={logoUrl} 
-            alt="Logo" 
-            className="h-8 w-8 rounded-md object-cover border bg-white" 
-          />
-        )}
+        <img 
+          src={logoUrl || "/icon.svg"} 
+          alt="Logo" 
+          className="h-8 w-8 rounded-md object-cover" 
+        />
         <h1 className="text-xl font-bold truncate transition-all duration-300">
-          {businessName || "Gestor de stock"}
+          {businessName || "Mi comercio"}
         </h1>
       </div>
 
@@ -106,22 +97,25 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* --- MENU MOBILE --- */}
       <div className="md:hidden">
         <Button 
-          variant="outline" 
           size="icon" 
-          className="fixed left-4 top-4 z-50" 
+          /* CAMBIO: Posición derecha (right-4), fondo primario, texto blanco, sin borde */
+          className="fixed right-4 top-4 z-50 bg-primary text-white hover:bg-primary/90 border-none shadow-md" 
           onClick={() => setIsMobileOpen(!isMobileOpen)}
         >
           {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
+        
         {isMobileOpen && (
           <div 
-            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm" 
+            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm transition-all" 
             onClick={() => setIsMobileOpen(false)}
           >
             <div 
-              className="fixed left-0 top-0 h-full w-72 bg-background shadow-lg border-r" 
+              /* CAMBIO: fixed right-0, border-l, y animación slide-in-from-right */
+              className="fixed right-0 top-0 h-full w-72 bg-background shadow-2xl border-l animate-in slide-in-from-right duration-300" 
               onClick={(e) => e.stopPropagation()}
             >
               {renderContent()}
@@ -130,9 +124,13 @@ export default function Sidebar() {
         )}
       </div>
 
-      <div className="hidden md:flex h-full w-72 flex-col border-r bg-background">
+      {/* --- MENU DESKTOP (Sin cambios, se mantiene a la izquierda) --- */}
+      <div className="hidden md:flex h-full w-72 flex-col border-r bg-background fixed left-0 top-0 bottom-0 z-30">
         {renderContent()}
       </div>
+      
+      {/* Ajuste de margen para desktop para que el contenido no quede tapado */}
+      <div className="hidden md:block w-72 shrink-0" />
     </>
   )
 }

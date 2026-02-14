@@ -129,7 +129,7 @@ export default function PerfilPage() {
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Mi Cuenta</h1>
-        <p className="text-muted-foreground">Administra la identidad de tu negocio.</p>
+        <p className="text-muted-foreground">Administra la identidad de tu comercio.</p>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -137,8 +137,8 @@ export default function PerfilPage() {
         <Card className="md:col-span-2 lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-                <Store className="h-5 w-5 text-blue-500" /> 
-                Datos del Negocio
+                <Store className="h-5 w-5 text-primary" /> 
+                Datos del Comercio
             </CardTitle>
             <CardDescription>Información visible en el sistema.</CardDescription>
           </CardHeader>
@@ -157,7 +157,7 @@ export default function PerfilPage() {
                 </div>
                 
                 <div className="space-y-2 flex-1 overflow-hidden">
-                    <Label htmlFor="logo" className="text-sm font-medium">Logo del Negocio</Label>
+                    <Label htmlFor="logo" className="text-sm font-medium">Logo del Comercio</Label>
                     
                     <div className="flex gap-2 items-center">
                       <Input 
@@ -189,14 +189,14 @@ export default function PerfilPage() {
             </div>
 
             <div className="space-y-2">
-                <Label htmlFor="businessName">Nombre del Negocio</Label>
+                <Label htmlFor="businessName">Nombre del Comercio</Label>
                 <div className="relative">
                     <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input 
                         id="businessName" 
                         value={businessName} 
                         onChange={(e) => setBusinessName(e.target.value)}
-                        placeholder="Ej: Mi Negocio" 
+                        placeholder="Ej: Mi Comercio" 
                         className="pl-9" 
                     />
                 </div>
