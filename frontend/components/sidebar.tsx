@@ -41,16 +41,18 @@ export default function Sidebar() {
 
   const renderContent = () => (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex h-20 items-center px-6 gap-3 overflow-hidden border-b">
-        <img 
-          src={logoUrl || "/icon.svg"} 
-          alt="Logo" 
-          className="h-8 w-8 rounded-md object-cover" 
-        />
-        <h1 className="text-xl font-bold truncate transition-all duration-300">
-          {businessName || "Mi comercio"}
-        </h1>
-      </div>
+      <Link href="/" onClick={() => setIsMobileOpen(false)}>
+        <div className="flex h-20 items-center px-6 gap-3 overflow-hidden border-b">
+          <img 
+            src={logoUrl || "/icon.svg"} 
+            alt="Logo" 
+            className="h-8 w-8 rounded-md object-cover" 
+          />
+          <h1 className="text-xl font-bold truncate transition-all duration-300">
+            {businessName || "Mi comercio"}
+          </h1>
+        </div>
+      </Link>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
         <Link

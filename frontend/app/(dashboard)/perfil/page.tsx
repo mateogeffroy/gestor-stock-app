@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-// Agregamos el icono Trash2
-import { User, Mail, Shield, Store, FileText, Upload, Loader2, Trash2 } from "lucide-react"
+import { User, Mail, Shield, Store, FileText, Upload, Loader2, Trash2, CircleHelp } from "lucide-react" // Agregué CircleHelp
 import { useBusiness } from "@/context/business-context"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
@@ -19,7 +18,6 @@ export default function PerfilPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [userEmail, setUserEmail] = useState("")
   const [uploadingImage, setUploadingImage] = useState(false)
-  // Estado extra para cuando estamos borrando
   const [isDeleting, setIsDeleting] = useState(false) 
 
   useEffect(() => {
@@ -30,7 +28,7 @@ export default function PerfilPage() {
     getUser()
   }, [])
 
-  // --- LÓGICA PARA SUBIR (IGUAL QUE ANTES) ---
+  // --- LÓGICA PARA SUBIR IMAGEN ---
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       const file = e.target.files?.[0]
@@ -64,25 +62,21 @@ export default function PerfilPage() {
     }
   }
 
-  // --- NUEVA LÓGICA: ELIMINAR LOGO ---
+  // --- LÓGICA: ELIMINAR LOGO ---
   const handleDeleteLogo = async () => {
     setIsDeleting(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // 1. Actualizamos la base de datos poniendo logo_url en NULL
       const { error } = await supabase
         .from('profiles')
-        .update({ logo_url: null }) // <--- Aquí borramos la referencia
+        .update({ logo_url: null })
         .eq('id', user.id)
 
       if (error) throw error
 
-      // 2. Actualizamos el contexto global (para que desaparezca de la sidebar)
       setLogoUrl(null)
-      
-      // 3. Sincronizamos (por seguridad)
       await refreshProfile()
       
       toast({ title: "Imagen eliminada", description: "Tu logo se ha quitado correctamente." })
@@ -95,14 +89,13 @@ export default function PerfilPage() {
     }
   }
 
-  // --- GUARDAR DATOS (NOMBRE) ---
+  // --- GUARDAR DATOS ---
   const handleSave = async () => {
     setIsSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      // Nota: Aquí enviamos logoUrl. Si acabamos de borrarlo, enviará null, lo cual es correcto.
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -134,6 +127,7 @@ export default function PerfilPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         
+        {/* --- TARJETA 1: DATOS DEL COMERCIO --- */}
         <Card className="md:col-span-2 lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -144,7 +138,7 @@ export default function PerfilPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             
-            {/* ZONA DE LOGO ACTUALIZADA */}
+            {/* ZONA DE LOGO */}
             <div className="flex items-start gap-4 p-4 border rounded-lg bg-muted/20">
                 <div className="h-16 w-16 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden bg-white relative shrink-0">
                     {uploadingImage ? (
@@ -158,7 +152,6 @@ export default function PerfilPage() {
                 
                 <div className="space-y-2 flex-1 overflow-hidden">
                     <Label htmlFor="logo" className="text-sm font-medium">Logo del Comercio</Label>
-                    
                     <div className="flex gap-2 items-center">
                       <Input 
                         id="logo" 
@@ -168,8 +161,6 @@ export default function PerfilPage() {
                         onChange={handleLogoUpload} 
                         disabled={uploadingImage || isDeleting} 
                       />
-                      
-                      {/* BOTÓN DE ELIMINAR: Solo aparece si hay un logo cargado */}
                       {logoUrl && (
                         <Button 
                           variant="destructive" 
@@ -177,13 +168,11 @@ export default function PerfilPage() {
                           className="h-9 w-9 shrink-0"
                           onClick={handleDeleteLogo}
                           disabled={isDeleting}
-                          title="Eliminar imagen"
                         >
                           {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
                         </Button>
                       )}
                     </div>
-                    
                     <p className="text-[10px] text-muted-foreground">Recomendado: 200x200px (PNG o JPG)</p>
                 </div>
             </div>
@@ -202,13 +191,7 @@ export default function PerfilPage() {
                 </div>
             </div>
 
-            <div className="space-y-2">
-                <Label htmlFor="email">Correo de Acceso</Label>
-                <div className="relative">
-                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input id="email" value={userEmail} disabled className="pl-9 bg-muted" />
-                </div>
-            </div>
+            {/* AQUI YA NO ESTA EL EMAIL */}
 
             <Button onClick={handleSave} disabled={isSaving || uploadingImage} className="w-full mt-2">
                 {isSaving ? (
@@ -222,47 +205,58 @@ export default function PerfilPage() {
           </CardContent>
         </Card>
 
-        {/* ... El resto de tarjetas (Seguridad y Arca) siguen igual ... */}
+        {/* --- TARJETA 2: SEGURIDAD (AHORA CON EMAIL) --- */}
         <Card className="md:col-span-2 lg:col-span-1 h-fit">
            <CardHeader>
             <CardTitle className="flex items-center gap-2">
-                <Shield className="h-5 w-5 text-green-600" />
+                <Shield className="h-5 w-5 text-primary" /> {/* Cambié a primary para combinar */}
                 Seguridad
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-6"> {/* space-y-6 para separar las secciones */}
+             
+             {/* SECCIÓN 1: CORREO DE ACCESO (NUEVO LUGAR) */}
+             <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium">Correo de Acceso</Label>
+                    
+                    {/* TOOLTIP DE AYUDA */}
+                    <div className="relative group flex items-center">
+                        <CircleHelp className="h-3.5 w-3.5 text-muted-foreground cursor-help hover:text-primary transition-colors" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-56 p-2 bg-slate-900 text-white text-[10px] rounded-md shadow-lg z-50 pointer-events-none text-center leading-tight">
+                             Por seguridad, el cambio de correo debe ser gestionado por el administrador del sistema.
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* VISUALIZACIÓN COMO DATO PLANO (NO INPUT) */}
+                <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-md border border-dashed border-gray-200">
+                    <div className="h-8 w-8 rounded-full bg-background flex items-center justify-center border shrink-0">
+                        <Mail className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm font-medium truncate text-foreground/80">
+                        {userEmail || "Cargando..."}
+                    </span>
+                </div>
+             </div>
+
+             {/* SECCIÓN 2: CONTRASEÑA */}
              <div className="flex flex-col gap-4 p-4 border rounded-lg">
                 <div className="space-y-1">
-                    <h4 className="font-medium">Contraseña</h4>
-                    <p className="text-sm text-muted-foreground">Te enviaremos un correo para restablecerla.</p>
+                    <h4 className="font-medium text-sm">Contraseña</h4>
+                    <p className="text-xs text-muted-foreground">Te enviaremos un correo para restablecerla.</p>
                 </div>
-                <Button variant="outline" className="w-full" onClick={async () => {
-                     const { error } = await supabase.auth.resetPasswordForEmail(userEmail, { redirectTo: window.location.origin + '/reset-password' })
-                     if(!error) toast({ title: "Correo enviado", description: "Revisa tu bandeja de entrada." })
+                <Button variant="outline" size="sm" className="w-full" onClick={async () => {
+                      const { error } = await supabase.auth.resetPasswordForEmail(userEmail, { redirectTo: window.location.origin + '/update-password' })
+                      if(!error) toast({ title: "Correo enviado", description: "Revisa tu bandeja de entrada." })
                 }}>
                     Cambiar contraseña via Email
                 </Button>
              </div>
+
           </CardContent>
         </Card>
-
-        {/* TARJETA ARCA (REAL) */}
-        <Card className="md:col-span-2">
-            <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-indigo-500" />
-                Configuración de Facturación (ARCA)
-            </CardTitle>
-            <CardDescription>
-                Ingresa tus datos fiscales para habilitar la factura electrónica.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* AQUÍ LLAMAMOS AL COMPONENTE */}
-            <ArcaConfig />
-          </CardContent>
-        </Card>
-
       </div>
     </div>
   )
