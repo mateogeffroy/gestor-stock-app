@@ -36,3 +36,11 @@ Thumbs.db
 # Variables de entorno locales (¡nunca subir!)
 /frontend/.env.local
 /frontend/.env*.local
+
+# Secretos: nunca al repo
+.env
+.env.*
+!.env.example
+*.key
+*.crt
+*.csr
