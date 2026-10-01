@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabaseDelUsuario } from "@/lib/supabase-server"
+import { supabaseAdmin } from "@/lib/supabase-admin"
 import { arcaPara } from "@/lib/arca/servidor"
 import {
   tipoComprobante, documentoReceptor, importes, fechaArca, numeroComprobante, LETRA, ErrorFiscal,
@@ -26,28 +27,31 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     .maybeSingle()
   if (!venta) return NextResponse.json({ error: "No encontramos esa venta." }, { status: 404 })
   if (venta.estado_fiscal === "autorizada") return NextResponse.json({ venta })
-  if (venta.estado_fiscal === "no_aplica")
-    return NextResponse.json({ error: "Esta venta se registró sin factura." }, { status: 400 })
 
   const { data: fiscal } = await db.from("comercio_fiscal").select("*").eq("user_id", user.id).maybeSingle()
   if (!fiscal)
     return NextResponse.json({ error: "Completá tus datos fiscales en Mi cuenta → Facturación." }, { status: 400 })
 
+  // La lectura de arriba pasó por RLS, así que la venta es del usuario. Las escrituras fiscales van con
+  // service role porque la política de venta bloquea updates en cajas cerradas, y una factura pendiente
+  // (ARCA caída a la noche) tiene que poder emitirse después del cierre. Solo se tocan campos fiscales.
+  const ventas = () => supabaseAdmin.from("venta")
+
   // Reservar la venta: evita pedir dos CAE si se aprieta "facturar" dos veces a la vez.
   // ponytail: si el proceso muere entre el CAE y el guardado, la venta queda en "procesando";
   // en ese caso verificá en ARCA (Comprobantes en línea) antes de reintentar.
-  const { data: reservada } = await db
-    .from("venta")
-    .update({ estado_fiscal: "procesando", error_fiscal: null })
+  const { data: reservada } = await ventas()
+    .update({ estado_fiscal: "procesando", error_fiscal: null, id_tipo_venta: 2 })
     .eq("id", id)
-    .in("estado_fiscal", ["pendiente", "error"])
+    .eq("user_id", user.id)
+    .in("estado_fiscal", ["no_aplica", "pendiente", "error"])
     .select("id")
     .maybeSingle()
   if (!reservada)
     return NextResponse.json({ error: "Esta venta ya se está facturando. Esperá unos segundos y recargá." }, { status: 409 })
 
   const fallar = async (mensaje: string, status: number) => {
-    await db.from("venta").update({ estado_fiscal: "error", error_fiscal: mensaje }).eq("id", id)
+    await ventas().update({ estado_fiscal: "error", error_fiscal: mensaje }).eq("id", id).eq("user_id", user.id)
     return NextResponse.json({ error: mensaje }, { status })
   }
 
@@ -88,7 +92,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
           tipo_comprobante: `Factura ${LETRA[cbteTipo]}`,
           nro_comprobante: numeroComprobante(fiscal.punto_venta, det.CbteDesde),
         }
-        const { data: guardada, error } = await db.from("venta").update(autorizada).eq("id", id).select().single()
+        const { data: guardada, error } = await ventas().update(autorizada).eq("id", id).eq("user_id", user.id).select().single()
         if (error) {
           // El CAE existe en ARCA aunque no se haya guardado: dejarlo registrado en el log del servidor.
           console.error("CAE obtenido pero no guardado", { venta: id, ...autorizada, error })

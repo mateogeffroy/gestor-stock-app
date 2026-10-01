@@ -243,13 +243,6 @@ export const ventaService = {
   
   // Pide el CAE a ARCA (vía servidor). Sirve también para reintentar o facturar una venta vieja.
   async facturar(idVenta: number) {
-    const { error: marcarError } = await supabase
-      .from("venta")
-      .update({ estado_fiscal: "pendiente", id_tipo_venta: 2 })
-      .eq("id", idVenta)
-      .eq("estado_fiscal", "no_aplica");
-    if (marcarError) throw new Error(marcarError.message);
-
     const res = await fetch(`/api/ventas/${idVenta}/facturar`, { method: "POST" });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || "No se pudo facturar.");
