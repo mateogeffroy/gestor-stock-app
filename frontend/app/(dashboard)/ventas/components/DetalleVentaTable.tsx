@@ -18,15 +18,15 @@ export function DetalleVentaTable({ detalles, onDetalleChange, onRemoveDetalle }
   const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => e.target.select();
 
   return (
-    <div className="border rounded-md overflow-hidden bg-white shadow-sm">
+    <div className="border rounded-md overflow-x-auto bg-card">
       <Table>
-        <TableHeader className="bg-muted/50">
+        <TableHeader>
           <TableRow>
-            <TableHead className="w-[30%]">Producto</TableHead>
-            <TableHead className="w-[15%]">Precio Unit.</TableHead>
-            <TableHead className="w-[10%]">Cant.</TableHead>
-            <TableHead className="w-[15%] text-center">Desc. (%)</TableHead>
-            <TableHead className="w-[20%] text-right">Subtotal ($)</TableHead>
+            <TableHead className="w-[30%] min-w-[160px]">Producto</TableHead>
+            <TableHead className="w-[15%] min-w-[110px]">Precio</TableHead>
+            <TableHead className="w-[10%] min-w-[80px]">Cant.</TableHead>
+            <TableHead className="w-[15%] min-w-[90px] text-center">Desc.</TableHead>
+            <TableHead className="w-[20%] min-w-[120px] text-right">Subtotal</TableHead>
             <TableHead className="w-[50px]"></TableHead>
           </TableRow>
         </TableHeader>
@@ -86,10 +86,10 @@ export function DetalleVentaTable({ detalles, onDetalleChange, onRemoveDetalle }
               {/* COLUMNA: SUBTOTAL (Editable con lógica inversa) */}
               <TableCell>
                 <div className="relative">
-                    <span className="absolute left-2 top-2 text-green-700 font-bold text-xs">$</span>
+                    <span className="absolute left-2 top-2 font-semibold text-xs">$</span>
                     <Input
                         type="number"
-                        className="pl-5 h-8 font-bold text-green-700 text-right"
+                        className="pl-5 h-8 font-semibold text-right"
                         value={Number(detalle.subtotal.toFixed(2))}
                         onFocus={handleFocus}
                         onChange={(e) => onDetalleChange(detalle.lineItemId, "subtotal", parseFloat(e.target.value))}
@@ -101,7 +101,8 @@ export function DetalleVentaTable({ detalles, onDetalleChange, onRemoveDetalle }
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  aria-label={`Quitar ${detalle.nombre_producto}`}
                   onClick={() => onRemoveDetalle(detalle.lineItemId)}
                   tabIndex={-1} // Evitar tabulación accidental al borrar
                 >
@@ -113,7 +114,7 @@ export function DetalleVentaTable({ detalles, onDetalleChange, onRemoveDetalle }
           {detalles.length === 0 && (
             <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                    Escanea un producto para comenzar...
+                    Escaneá o buscá un producto para empezar la venta.
                 </TableCell>
             </TableRow>
           )}

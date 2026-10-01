@@ -1,22 +1,28 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Home, ShoppingCart, Package, DollarSign, Menu, X, User, LogOut } from "lucide-react"
+import { Home, ShoppingCart, Package, Wallet, Menu, X, User, LogOut } from "lucide-react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
-import { Button } from "@/components/ui/button"
 import { supabase } from "@/lib/supabase"
 import { useToast } from "@/components/ui/use-toast"
 import { useBusiness } from "@/context/business-context"
 
-// Asegúrate de que los colores aquí sean los que definimos (text-primary si quieres todo naranja)
 const routes = [
-  { label: "Inicio", icon: Home, href: "/", color: "text-primary" },
-  { label: "Ventas", icon: ShoppingCart, href: "/ventas", color: "text-violet-500" },
-  { label: "Productos", icon: Package, href: "/productos", color: "text-pink-700" },
-  { label: "Cajas", icon: DollarSign, href: "/cajas", color: "text-orange-500" },
+  { label: "Inicio", icon: Home, href: "/" },
+  { label: "Ventas", icon: ShoppingCart, href: "/ventas" },
+  { label: "Productos", icon: Package, href: "/productos" },
+  { label: "Cajas", icon: Wallet, href: "/cajas" },
 ]
+
+const linkClass = (active: boolean) =>
+  cn(
+    "relative flex items-center gap-3 rounded-md px-3 py-2.5 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+    active
+      ? "bg-white/10 font-semibold text-white before:absolute before:-left-3 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-r before:bg-primary"
+      : "text-white/65 hover:bg-white/5 hover:text-white"
+  )
 
 export default function Sidebar() {
   const pathname = usePathname()
@@ -24,11 +30,12 @@ export default function Sidebar() {
   const { toast } = useToast()
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const { businessName, logoUrl } = useBusiness()
+  const close = () => setIsMobileOpen(false)
 
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
-      toast({ title: "Sesión cerrada", description: "Hasta luego 👋" })
+      toast({ title: "Sesión cerrada" })
       router.refresh()
       setTimeout(() => {
         window.location.href = "/login"
@@ -39,57 +46,30 @@ export default function Sidebar() {
     }
   }
 
-  const renderContent = () => (
-    <div className="flex h-full flex-col bg-background">
-      <Link href="/" onClick={() => setIsMobileOpen(false)}>
-        <div className="flex h-20 items-center px-6 gap-3 overflow-hidden border-b">
-          <img 
-            src={logoUrl || "/icon.svg"} 
-            alt="Logo" 
-            className="h-8 w-8 rounded-md object-cover" 
-          />
-          <h1 className="text-xl font-bold truncate transition-all duration-300">
-            {businessName || "Mi comercio"}
-          </h1>
-        </div>
+  const content = (
+    <div className="flex h-full flex-col bg-foreground px-3 text-white">
+      <Link href="/" onClick={close} className="flex h-20 items-center gap-3 px-3">
+        <img src={logoUrl || "/icon.svg"} alt="" className="h-9 w-9 rounded-md bg-white object-cover" />
+        <span className="font-display text-2xl font-bold leading-none truncate">
+          {businessName || "Mi comercio"}
+        </span>
       </Link>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
-        <Link
-          href="/perfil"
-          onClick={() => setIsMobileOpen(false)}
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent text-gray-500 hover:text-gray-900 mb-4",
-            pathname === "/perfil" && "bg-accent text-accent-foreground font-semibold"
-          )}
-        >
+      <nav className="flex flex-1 flex-col gap-1 py-4">
+        {routes.map((route) => (
+          <Link key={route.href} href={route.href} onClick={close} className={linkClass(pathname === route.href)}>
+            <route.icon className="h-5 w-5" />
+            {route.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="flex flex-col gap-1 border-t border-white/10 py-4">
+        <Link href="/perfil" onClick={close} className={linkClass(pathname === "/perfil")}>
           <User className="h-5 w-5" />
           Mi cuenta
         </Link>
-        
-        <div className="flex flex-col gap-1">
-          {routes.map((route) => (
-            <Link
-              key={route.href}
-              href={route.href}
-              onClick={() => setIsMobileOpen(false)}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all hover:bg-accent",
-                pathname === route.href ? "bg-accent text-accent-foreground font-semibold" : "text-muted-foreground",
-              )}
-            >
-              <route.icon className={cn("h-5 w-5", route.color)} />
-              {route.label}
-            </Link>
-          ))}
-        </div>
-      </div>
-
-      <div className="mt-auto p-3 mb-4 border-t pt-4">
-        <button
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-red-600 transition-all hover:bg-red-50 hover:font-bold"
-        >
+        <button onClick={handleLogout} className={linkClass(false)}>
           <LogOut className="h-5 w-5" />
           Cerrar sesión
         </button>
@@ -99,40 +79,27 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* --- MENU MOBILE --- */}
-      <div className="md:hidden">
-        <Button 
-          size="icon" 
-          /* CAMBIO: Posición derecha (right-4), fondo primario, texto blanco, sin borde */
-          className="fixed right-4 top-4 z-50 bg-primary text-white hover:bg-primary/90 border-none shadow-md" 
+      {/* Mobile: barra superior + panel */}
+      <div className="md:hidden fixed inset-x-0 top-0 z-40 flex h-14 items-center justify-between bg-foreground px-4 text-white">
+        <span className="font-display text-xl font-bold truncate">{businessName || "Mi comercio"}</span>
+        <button
+          aria-label={isMobileOpen ? "Cerrar menú" : "Abrir menú"}
+          className="rounded-md p-2 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           onClick={() => setIsMobileOpen(!isMobileOpen)}
         >
           {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
-        
-        {isMobileOpen && (
-          <div 
-            className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm transition-all" 
-            onClick={() => setIsMobileOpen(false)}
-          >
-            <div 
-              /* CAMBIO: fixed right-0, border-l, y animación slide-in-from-right */
-              className="fixed right-0 top-0 h-full w-72 bg-background shadow-2xl border-l animate-in slide-in-from-right duration-300" 
-              onClick={(e) => e.stopPropagation()}
-            >
-              {renderContent()}
-            </div>
+        </button>
+      </div>
+      {isMobileOpen && (
+        <div className="md:hidden fixed inset-0 top-14 z-40 bg-foreground/40" onClick={close}>
+          <div className="h-full w-72 animate-in slide-in-from-left duration-200" onClick={(e) => e.stopPropagation()}>
+            {content}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* --- MENU DESKTOP (Sin cambios, se mantiene a la izquierda) --- */}
-      <div className="hidden md:flex h-full w-72 flex-col border-r bg-background fixed left-0 top-0 bottom-0 z-30">
-        {renderContent()}
-      </div>
-      
-      {/* Ajuste de margen para desktop para que el contenido no quede tapado */}
-      <div className="hidden md:block w-72 shrink-0" />
+      {/* Desktop */}
+      <aside className="hidden md:block w-64 shrink-0">{content}</aside>
     </>
   )
 }

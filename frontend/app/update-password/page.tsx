@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { AuthShell, PasswordToggle } from "@/components/auth-shell"
 import { useToast } from "@/components/ui/use-toast"
 import { supabase } from "@/lib/supabase"
-import { Loader2, Lock, Eye, EyeOff, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
 export default function UpdatePasswordPage() {
   const [password, setPassword] = useState("")
@@ -84,12 +85,12 @@ export default function UpdatePasswordPage() {
     e.preventDefault()
     
     if (password !== confirmPassword) {
-        toast({ title: "Error", description: "Las contraseñas no coinciden.", variant: "destructive" })
+        toast({ title: "Las contraseñas no coinciden", description: "Escribí la misma contraseña en los dos campos.", variant: "destructive" })
         return
     }
 
     if (password.length < 6) {
-        toast({ title: "Error", description: "Mínimo 6 caracteres.", variant: "destructive" })
+        toast({ title: "Contraseña muy corta", description: "Usá al menos 6 caracteres.", variant: "destructive" })
         return
     }
 
@@ -100,7 +101,7 @@ export default function UpdatePasswordPage() {
       
       if (error) throw error
       
-      toast({ title: "¡Éxito!", description: "Contraseña actualizada. Iniciando sesión..." })
+      toast({ title: "Contraseña guardada", description: "Ya podés ingresar con la nueva." })
       
       setTimeout(() => {
           router.push("/login")
@@ -120,93 +121,62 @@ export default function UpdatePasswordPage() {
     }
   }
 
-  // RENDERIZADO (Igual que antes)
   if (verifying) {
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
-            <Card className="w-[400px] shadow-lg border-primary/20">
-                <CardContent className="flex flex-col items-center justify-center py-10 space-y-4">
-                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                    <p className="text-sm text-muted-foreground font-medium">Validando credenciales...</p>
-                </CardContent>
-            </Card>
-        </div>
+      <AuthShell title="Un momento" subtitle="Estamos validando el enlace.">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </AuthShell>
     )
   }
 
   if (!validSession) {
     return (
-        <div className="flex items-center justify-center min-h-screen bg-slate-50">
-            <Card className="w-[400px] shadow-lg border-red-100">
-                <CardHeader>
-                    <CardTitle className="text-red-600 flex items-center gap-2">
-                        <AlertCircle className="h-5 w-5"/> Enlace no válido
-                    </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                        El enlace ha expirado o no contiene las credenciales necesarias.
-                    </p>
-                    <Button variant="outline" className="w-full" onClick={() => router.push("/login/forgot-password")}>
-                        Solicitar nuevo enlace
-                    </Button>
-                </CardContent>
-            </Card>
-        </div>
+      <AuthShell title="Enlace vencido" subtitle="Este enlace ya se usó o expiró. Pedí uno nuevo para crear tu contraseña.">
+        <Button size="lg" className="w-full font-semibold" onClick={() => router.push("/login/forgot-password")}>
+          Pedir enlace nuevo
+        </Button>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-slate-50">
-      <Card className="w-[400px] shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-primary">
-            <CheckCircle2 className="h-5 w-5 text-green-600"/> Nueva Contraseña
-          </CardTitle>
-          <CardDescription>
-            Creá tu nueva clave para acceder al sistema.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleUpdate} className="space-y-4">
-            <div className="space-y-2">
-                <label className="text-sm font-medium">Nueva Contraseña</label>
-                <div className="relative">
-                    <Input 
-                        type={showPassword ? "text" : "password"} 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Mínimo 6 caracteres"
-                        required
-                        className="pr-10"
-                    />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary">
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                </div>
-            </div>
-            <div className="space-y-2">
-                <label className="text-sm font-medium">Repetir Contraseña</label>
-                <div className="relative">
-                    <Input 
-                        type={showConfirm ? "text" : "password"} 
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirmar clave"
-                        required
-                        className="pr-10"
-                    />
-                    <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-primary">
-                        {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                </div>
-            </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Actualizar Contraseña"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+    <AuthShell title="Contraseña nueva" subtitle="Usá al menos 6 caracteres.">
+      <form onSubmit={handleUpdate} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="password">Contraseña nueva</Label>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="pr-20"
+            />
+            <PasswordToggle shown={showPassword} onToggle={() => setShowPassword(!showPassword)} />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="confirm">Repetila</Label>
+          <div className="relative">
+            <Input
+              id="confirm"
+              type={showConfirm ? "text" : "password"}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              className="pr-20"
+            />
+            <PasswordToggle shown={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} />
+          </div>
+        </div>
+        <Button type="submit" size="lg" className="w-full font-semibold" disabled={loading}>
+          {loading && <Loader2 className="animate-spin" />}
+          Guardar contraseña
+        </Button>
+      </form>
+    </AuthShell>
   )
 }

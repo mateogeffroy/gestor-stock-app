@@ -2,15 +2,28 @@
 
 import { useState, useEffect, useMemo, useRef } from "react"
 import { Venta, NuevaVentaState, DetalleVentaForm, Producto } from "../types"
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { useToast } from "@/components/ui/use-toast"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ProductSearch } from "./ProductSearch"
 import { DetalleVentaTable } from "./DetalleVentaTable"
-import { ArrowLeft, User, Loader2 } from "lucide-react" // Añadido Loader2
+import { ArrowLeft, Loader2 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Link from "next/link"
+import { supabase } from "@/lib/supabase"
+import { cn } from "@/lib/utils"
+import { CONDICION_RECEPTOR, CONDICIONES_RECEPTOR_UI, UMBRAL_IDENTIFICACION_CF, cuitValido } from "@/lib/arca/fiscal"
+import type { MedioPago } from "@/services/venta-service"
+
+const MEDIOS: { id: MedioPago; label: string }[] = [
+  { id: "efectivo", label: "Efectivo" },
+  { id: "debito", label: "Débito" },
+  { id: "credito", label: "Crédito" },
+  { id: "transferencia", label: "Transferencia" },
+  { id: "qr", label: "QR" },
+]
 
 interface VentaFormProps {
   venta?: any
@@ -26,6 +39,7 @@ const initialFormState: NuevaVentaState = {
 };
 
 export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: VentaFormProps) {
+  const { toast } = useToast();
   const detailIdCounter = useRef(1);
   const [nuevaVenta, setNuevaVenta] = useState<NuevaVentaState>(initialFormState);
   
@@ -37,6 +51,22 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
   const [clienteNombre, setClienteNombre] = useState("")
   const [clienteCuit, setClienteCuit] = useState("")
   const [clienteDireccion, setClienteDireccion] = useState("")
+  const [condicionCliente, setCondicionCliente] = useState<number>(CONDICION_RECEPTOR.RESPONSABLE_INSCRIPTO)
+  const [dni, setDni] = useState("")
+
+  // --- FACTURACIÓN Y PAGO ---
+  const [puedeFacturar, setPuedeFacturar] = useState<boolean | null>(null) // null = cargando
+  const [facturar, setFacturar] = useState(false)
+  const [medioPago, setMedioPago] = useState<MedioPago>("efectivo")
+  const [pagaCon, setPagaCon] = useState("")
+
+  // Si el comercio tiene datos fiscales cargados, se factura por defecto
+  useEffect(() => {
+    supabase.from("comercio_fiscal").select("user_id").maybeSingle().then(({ data }) => {
+      setPuedeFacturar(!!data)
+      setFacturar(!!data)
+    })
+  }, [])
 
   useEffect(() => {
     if (venta) {
@@ -131,12 +161,17 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
 
   const handleFinalSubmit = async () => {
     if (nuevaVenta.detalles.length === 0) {
-        alert("La venta debe tener al menos un producto.");
+        toast({ title: "La venta está vacía", description: "Escaneá o buscá al menos un producto.", variant: "destructive" });
         return;
     }
 
-    if (tipoCliente === 'responsable' && clienteCuit.length < 11) {
-        alert("El CUIT debe tener 11 dígitos.");
+    if (tipoCliente === 'responsable' && !cuitValido(clienteCuit)) {
+        toast({ title: "CUIT inválido", description: "Revisá los 11 dígitos, sin guiones.", variant: "destructive" });
+        return;
+    }
+
+    if (facturar && tipoCliente === 'final' && totalVenta >= UMBRAL_IDENTIFICACION_CF && !dni) {
+        toast({ title: "Falta el DNI", description: "Desde $10.000.000 hay que identificar al consumidor final.", variant: "destructive" });
         return;
     }
 
@@ -153,162 +188,201 @@ export function VentaForm({ venta, onSubmit, onSearchProductos, onCancel }: Vent
         cliente_nombre: tipoCliente === 'final' ? "Consumidor Final" : clienteNombre,
         cliente_cuit: tipoCliente === 'final' ? null : clienteCuit,
         cliente_direccion: tipoCliente === 'final' ? null : clienteDireccion,
+        facturar,
+        condicion_iva_receptor: tipoCliente === 'final' ? CONDICION_RECEPTOR.CONSUMIDOR_FINAL : condicionCliente,
+        dni_receptor: tipoCliente === 'final' && dni ? dni : null,
+        medio_pago: medioPago,
       });
-
-      // Nota: Si el onSubmit redirige fuera de la página, el estado se limpiará solo.
-      // Si te quedas en la misma página, quizás quieras poner setIsSubmitting(false) 
-      // y limpiar el formulario aquí.
-
     } catch (error) {
       console.error("Error al confirmar venta:", error);
-      alert("Hubo un error al procesar la venta.");
-      setIsSubmitting(false); // Rehabilitamos el botón solo en caso de error
+      toast({ title: "La venta no se registró", description: "Revisá la conexión y volvé a cobrar.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  return (
-    <Card className="w-full border-none shadow-none sm:border sm:shadow-sm">
-      <CardHeader className="px-4 sm:px-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-          <div>
-            <CardTitle className="text-2xl font-bold">
-              {venta ? "Ver Venta" : "Nueva Venta"}
-            </CardTitle>
-          </div>
-          <div className="w-full sm:w-[200px]">
-            <Select
-              disabled={isSubmitting}
-              value={String(nuevaVenta.id_tipo_venta)}
-              onValueChange={(value) => setNuevaVenta(prev => ({ ...prev, id_tipo_venta: Number(value) }))}
-            >
-              <SelectTrigger className="font-medium"><SelectValue placeholder="Tipo" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Orden de Compra</SelectItem>
-                <SelectItem value="2">Factura B</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="px-4 sm:px-6 space-y-6">
-        {/* --- DATOS DEL CLIENTE --- */}
-        <div className="bg-slate-50 border rounded-lg p-4">
-             <Label className="flex items-center gap-2 mb-3 font-semibold text-slate-700">
-                <User className="h-4 w-4" /> Datos del Cliente
-             </Label>
-             
-             <Tabs value={tipoCliente} onValueChange={(v) => setTipoCliente(v as any)} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 max-w-md mb-3">
-                    <TabsTrigger value="final" disabled={isSubmitting}>Consumidor Final</TabsTrigger>
-                    <TabsTrigger value="responsable" disabled={isSubmitting}>Cliente con CUIT</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="final">
-                    <p className="text-sm text-muted-foreground italic">
-                        Venta anónima a consumidor final. No requiere datos adicionales.
-                    </p>
-                </TabsContent>
-                
-                <TabsContent value="responsable" className="space-y-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                            <Label className="text-xs">CUIT (Sin guiones)</Label>
-                            <Input 
-                                disabled={isSubmitting}
-                                placeholder="20123456789" 
-                                value={clienteCuit}
-                                onChange={e => setClienteCuit(e.target.value)}
-                                maxLength={11}
-                                className="bg-white"
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-xs">Nombre / Razón Social</Label>
-                            <Input 
-                                disabled={isSubmitting}
-                                placeholder="Ej: Empresa S.A." 
-                                value={clienteNombre}
-                                onChange={e => setClienteNombre(e.target.value)}
-                                className="bg-white"
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                            <Label className="text-xs">Dirección (Opcional)</Label>
-                            <Input 
-                                disabled={isSubmitting}
-                                placeholder="Calle Falsa 123" 
-                                value={clienteDireccion}
-                                onChange={e => setClienteDireccion(e.target.value)}
-                                className="bg-white"
-                            />
-                    </div>
-                </TabsContent>
-             </Tabs>
-        </div>
+  // F12 cobra desde cualquier lugar del formulario (atajo habitual de punto de venta)
+  const submitRef = useRef(handleFinalSubmit)
+  submitRef.current = handleFinalSubmit
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F12") {
+        e.preventDefault()
+        submitRef.current()
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
-        {/* BUSCADOR */}
-        <div className="bg-muted/30 p-4 rounded-lg border">
-          <Label className="mb-2 block text-xs font-semibold uppercase text-muted-foreground">Agregar Productos</Label>
-          <ProductSearch 
-            onSelect={handleSelectProducto} 
-            onSearch={onSearchProductos} 
+  const vuelto = (parseFloat(pagaCon) || 0) - totalVenta
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <button
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50"
+        >
+          <ArrowLeft className="h-4 w-4" /> Ventas
+        </button>
+        <h1 className="page-title">{venta ? "Ver venta" : "Nueva venta"}</h1>
+      </div>
+
+      <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
+        <div className="space-y-4 min-w-0">
+          <ProductSearch
+            onSelect={handleSelectProducto}
+            onSearch={onSearchProductos}
             onCommitNotFound={handleCreateNonExistentProduct}
           />
-        </div>
-
-        {/* GRILLA */}
-        <div>
-          <Label className="mb-2 block text-xs font-semibold uppercase text-muted-foreground">Detalle de la venta</Label>
           <DetalleVentaTable
             detalles={nuevaVenta.detalles}
             onDetalleChange={handleDetalleChange}
             onRemoveDetalle={handleRemoveDetalle}
           />
         </div>
-      </CardContent>
 
-      <CardFooter className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t bg-muted/10 p-6">
-        <div className="flex items-center gap-2 text-muted-foreground">
-              <span className="text-sm">Items: {nuevaVenta.detalles.length}</span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-center gap-6 w-full sm:w-auto">
-            <div className="text-right">
-                <p className="text-sm font-medium text-muted-foreground">Total a Pagar</p>
-                <p className="text-4xl font-bold text-primary">${totalVenta.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </div>
-            
-            <div className="flex gap-2 w-full sm:w-auto">
-                <Button 
-                  variant="outline" 
-                  size="lg" 
-                  onClick={onCancel} 
-                  disabled={isSubmitting} 
-                  className="flex-1 sm:flex-none"
-                >
-                  <ArrowLeft className="mr-2 h-4 w-4" /> {isSubmitting ? "Espere..." : "Cancelar"}
-                </Button>
-
-                <Button 
-                  onClick={handleFinalSubmit} 
-                  size="lg" 
-                  disabled={isSubmitting}
-                  className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white font-bold px-8"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      PROCESANDO...
-                    </>
-                  ) : (
-                    "CONFIRMAR VENTA"
+        <aside className="ticket rounded-t-md border border-b-0 px-5 pt-5 lg:sticky lg:top-6 space-y-5">
+          <div className="space-y-2">
+            <Label id="lbl-cbte">Comprobante</Label>
+            <div role="group" aria-labelledby="lbl-cbte" className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1">
+              {[{ v: true, l: "Factura" }, { v: false, l: "Sin factura" }].map((o) => (
+                <button
+                  key={o.l}
+                  type="button"
+                  aria-pressed={facturar === o.v}
+                  disabled={isSubmitting || (o.v && !puedeFacturar)}
+                  onClick={() => setFacturar(o.v)}
+                  className={cn(
+                    "rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    facturar === o.v ? "bg-card shadow-sm" : "text-muted-foreground"
                   )}
-                </Button>
+                >
+                  {o.l}
+                </button>
+              ))}
             </div>
-        </div>
-      </CardFooter>
-    </Card>
+            {puedeFacturar === false && (
+              <p className="text-xs text-muted-foreground">
+                Para emitir facturas, cargá tus datos en <Link href="/perfil" className="underline">Mi cuenta</Link>.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cliente</Label>
+            <Tabs value={tipoCliente} onValueChange={(v) => setTipoCliente(v as any)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="final" disabled={isSubmitting}>Consumidor final</TabsTrigger>
+                <TabsTrigger value="responsable" disabled={isSubmitting}>Con CUIT</TabsTrigger>
+              </TabsList>
+              <TabsContent value="final" className="pt-1">
+                {facturar && (
+                  <Input
+                    disabled={isSubmitting}
+                    aria-label="DNI del cliente"
+                    placeholder={totalVenta >= UMBRAL_IDENTIFICACION_CF ? "DNI (obligatorio)" : "DNI (opcional)"}
+                    inputMode="numeric"
+                    value={dni}
+                    onChange={e => setDni(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  />
+                )}
+              </TabsContent>
+              <TabsContent value="responsable" className="space-y-3 pt-1">
+                <Input
+                  disabled={isSubmitting}
+                  aria-label="CUIT"
+                  placeholder="CUIT, 11 dígitos sin guiones"
+                  inputMode="numeric"
+                  value={clienteCuit}
+                  onChange={e => setClienteCuit(e.target.value.replace(/\D/g, ""))}
+                  maxLength={11}
+                />
+                <Select value={String(condicionCliente)} onValueChange={(v) => setCondicionCliente(Number(v))} disabled={isSubmitting}>
+                  <SelectTrigger aria-label="Condición frente al IVA"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {CONDICIONES_RECEPTOR_UI.filter((c) => c.id !== CONDICION_RECEPTOR.CONSUMIDOR_FINAL).map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  disabled={isSubmitting}
+                  aria-label="Nombre o razón social"
+                  placeholder="Nombre o razón social"
+                  value={clienteNombre}
+                  onChange={e => setClienteNombre(e.target.value)}
+                />
+                <Input
+                  disabled={isSubmitting}
+                  aria-label="Dirección"
+                  placeholder="Dirección (opcional)"
+                  value={clienteDireccion}
+                  onChange={e => setClienteDireccion(e.target.value)}
+                />
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <div className="space-y-2">
+            <Label id="lbl-pago">Pago</Label>
+            <div role="group" aria-labelledby="lbl-pago" className="flex flex-wrap gap-1">
+              {MEDIOS.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  aria-pressed={medioPago === m.id}
+                  disabled={isSubmitting}
+                  onClick={() => setMedioPago(m.id)}
+                  className={cn(
+                    "rounded border px-2.5 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    medioPago === m.id ? "border-foreground bg-foreground text-white" : "hover:bg-muted"
+                  )}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            {medioPago === "efectivo" && (
+              <div className="flex items-center gap-3">
+                <Input
+                  aria-label="Paga con"
+                  placeholder="Paga con"
+                  inputMode="decimal"
+                  type="number"
+                  value={pagaCon}
+                  onChange={(e) => setPagaCon(e.target.value)}
+                  className="w-32"
+                />
+                {pagaCon && (
+                  <p className={cn("text-sm", vuelto < 0 && "text-destructive font-semibold")}>
+                    {vuelto < 0 ? "Falta " : "Vuelto "}
+                    <strong>${Math.abs(vuelto).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="ticket-rule pt-4">
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Total</span>
+              <span>{nuevaVenta.detalles.length} {nuevaVenta.detalles.length === 1 ? "ítem" : "ítems"}</span>
+            </div>
+            <p className="font-display text-6xl font-bold leading-tight break-all" aria-live="polite">
+              ${totalVenta.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+          </div>
+
+          <Button onClick={handleFinalSubmit} size="lg" disabled={isSubmitting} className="w-full h-14 text-base font-semibold">
+            {isSubmitting && <Loader2 className="animate-spin" />}
+            {isSubmitting ? "Cobrando…" : "Cobrar venta"}
+          </Button>
+          <p className="-mt-3 text-center text-xs text-muted-foreground">o apretá <kbd className="rounded border px-1">F12</kbd></p>
+        </aside>
+      </div>
+    </div>
   )
 }

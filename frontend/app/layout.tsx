@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Hanken_Grotesk, Big_Shoulders } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { BusinessProvider } from "@/context/business-context"; 
 
-const inter = Inter({ subsets: ["latin"] });
+const sans = Hanken_Grotesk({ subsets: ["latin"], variable: "--font-sans" });
+const display = Big_Shoulders({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-display" });
 
 export const metadata: Metadata = {
   title: "Mi comercio",
@@ -18,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={inter.className}>
+      <body className={`${sans.variable} ${display.variable} font-sans`}>
         {/* PROVIDERS GLOBALES (Mantener aquí) */}
         <BusinessProvider>
           

@@ -12,17 +12,19 @@ export interface VentaDetalle {
   producto?: { nombre: string; codigo: string };
 }
 
+export type MedioPago = "efectivo" | "debito" | "credito" | "transferencia" | "qr" | "otro";
+
 export interface NuevaVenta {
   total: number;
   id_tipo_venta: number;
   id_caja: number;
   detalles: VentaDetalle[];
   
-  // Datos Fiscales (AFIP)
-  cae?: string | null;
-  vto_cae?: string | null;
-  nro_comprobante?: string | null;
-  tipo_comprobante?: string | null;
+  // Facturación: el CAE lo pide después el servidor (/api/ventas/[id]/facturar)
+  facturar: boolean;
+  condicion_iva_receptor: number;
+  dni_receptor?: string | null;
+  medio_pago: MedioPago;
 
   // Datos del Cliente
   id_cliente?: number | null;
@@ -131,11 +133,11 @@ export const ventaService = {
         id_tipo_venta: venta.id_tipo_venta,
         id_caja: venta.id_caja,
         
-        // Datos Fiscales
-        cae: venta.cae,
-        vto_cae: venta.vto_cae,
-        nro_comprobante: venta.nro_comprobante,
-        tipo_comprobante: venta.tipo_comprobante,
+        // Facturación
+        estado_fiscal: venta.facturar ? "pendiente" : "no_aplica",
+        condicion_iva_receptor: venta.condicion_iva_receptor,
+        doc_nro: venta.dni_receptor ? Number(venta.dni_receptor) : null,
+        medio_pago: venta.medio_pago,
 
         // Datos del Cliente
         id_cliente: venta.id_cliente || null,
@@ -195,6 +197,11 @@ export const ventaService = {
     
     if (fetchError) throw new Error("Venta no encontrada");
 
+    // Una factura autorizada por ARCA no se borra: se anula emitiendo una nota de crédito.
+    if (venta.estado_fiscal === "autorizada" || venta.estado_fiscal === "procesando") {
+        throw new Error("Esta venta tiene factura electrónica. Para anularla hay que emitir una nota de crédito.");
+    }
+
     // 2. VERIFICACIÓN DE SEGURIDAD (Gatekeeper)
     // Buscamos la caja asociada para ver si está cerrada
     const { data: caja, error: cajaError } = await supabase
@@ -234,12 +241,18 @@ export const ventaService = {
     }
   },
   
-  async updateTipoVenta(idVenta: number, idTipoVenta: number) {
-      const { error } = await supabase
-        .from("venta")
-        .update({ id_tipo_venta: idTipoVenta })
-        .eq("id", idVenta);
+  // Pide el CAE a ARCA (vía servidor). Sirve también para reintentar o facturar una venta vieja.
+  async facturar(idVenta: number) {
+    const { error: marcarError } = await supabase
+      .from("venta")
+      .update({ estado_fiscal: "pendiente", id_tipo_venta: 2 })
+      .eq("id", idVenta)
+      .eq("estado_fiscal", "no_aplica");
+    if (marcarError) throw new Error(marcarError.message);
 
-      if (error) throw new Error(error.message);
-    }
+    const res = await fetch(`/api/ventas/${idVenta}/facturar`, { method: "POST" });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "No se pudo facturar.");
+    return json.venta;
+  }
 };

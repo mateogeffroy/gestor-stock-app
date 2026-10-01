@@ -2,63 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Paleta "mostrador":
+  vidrio #17302A (tinta / sidebar) · mostrador #EEF2EF (fondo) · papel #FFFFFF
+  ámbar #F5A30A (marca, del logo) · línea #D3DCD6 · rojo #B93A28 · verde #2E7D4F
+*/
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 135 13% 94%;
+    --foreground: 166 35% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 166 35% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 166 35% 14%;
 
-    /* TU NUEVO NARANJA (#ffa40b) */
-    --primary: 38 100% 52%;
-    /* Texto oscuro sobre el botón naranja para contraste */
-    --primary-foreground: 38 100% 10%;
+    --primary: 39 92% 50%;
+    --primary-foreground: 166 35% 14%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    
-    /* El anillo de foco también naranja */
-    --ring: 38 100% 52%;
-    
-    --radius: 0.5rem;
-  }
+    --secondary: 140 12% 90%;
+    --secondary-foreground: 166 35% 14%;
+    --muted: 140 12% 90%;
+    --muted-foreground: 154 10% 33%;
+    --accent: 140 12% 90%;
+    --accent-foreground: 166 35% 14%;
+    --destructive: 7 64% 44%;
+    --destructive-foreground: 0 0% 100%;
+    --ok: 146 46% 33%;
+    --border: 138 10% 81%;
+    --input: 138 10% 70%;
+    --ring: 166 35% 14%;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* Gráficos: serie actual (verde), período anterior (gris), rampa secuencial verde */
+    --chart-1: 157 85% 26%;
+    --chart-prev: 150 5% 55%;
 
-    /* TU NUEVO NARANJA EN MODO OSCURO */
-    --primary: 38 100% 52%;
-    /* Texto oscuro sobre el botón naranja */
-    --primary-foreground: 38 100% 10%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    
-    /* Anillo naranja */
-    --ring: 38 100% 52%;
+    --radius: 0.375rem;
   }
 }
 
@@ -67,6 +45,35 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* Títulos de página: condensada, grande, sin adornos */
+  .page-title {
+    @apply font-display text-5xl font-bold leading-none tracking-tight;
+  }
+
+  /* Ticket térmico: borde inferior dentado. Es el único elemento "con personalidad". */
+  .ticket {
+    --zig: 10px;
+    @apply bg-card text-card-foreground;
+    padding-bottom: calc(var(--zig) + 1rem);
+    -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(2 * var(--zig)) 100%;
+    mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(2 * var(--zig)) 100%;
+  }
+
+  /* Línea punteada de ticket */
+  .ticket-rule {
+    @apply border-t border-dashed border-foreground/25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -1,22 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Venta } from "../types"
 import { ventaService } from "@/services/venta-service"
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Pencil, Check, X, Loader2, Printer, FileText, Calendar, ShieldCheck } from "lucide-react"
+import { Loader2, Printer, ShieldCheck, AlertTriangle, Clock } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-
-// --- IMPORTS NUEVOS PARA PDF Y CONTEXTO ---
 import { generateInvoicePDF } from "@/lib/pdf-generator"
 import { useBusiness } from "@/context/business-context"
+import { supabase } from "@/lib/supabase"
+import { DOC } from "@/lib/arca/fiscal"
 
 interface VentaDetalleDialogProps {
   open: boolean
@@ -25,232 +20,138 @@ interface VentaDetalleDialogProps {
   onVentaUpdated?: () => void
 }
 
-export function VentaDetalleDialog({
-  open,
-  onOpenChange,
-  venta,
-  onVentaUpdated
-}: VentaDetalleDialogProps) {
+const MEDIO: Record<string, string> = {
+  efectivo: "Efectivo", debito: "Débito", credito: "Crédito", transferencia: "Transferencia", qr: "QR", otro: "Otro",
+}
+const money = (n: number) => `$${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+const fecha = (iso?: string) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "")
+
+export function VentaDetalleDialog({ open, onOpenChange, venta, onVentaUpdated }: VentaDetalleDialogProps) {
   const { toast } = useToast()
-  
-  // 1. Obtenemos los datos globales del negocio para el PDF
-  const { businessName, logoUrl } = useBusiness()
-
-  const [isEditingType, setIsEditingType] = useState(false)
-  const [selectedTipo, setSelectedTipo] = useState<string>("1")
-  const [isSaving, setIsSaving] = useState(false)
-  const [isPrinting, setIsPrinting] = useState(false)
-
-  // Reiniciar estado al abrir/cambiar venta
-  useEffect(() => {
-    if (venta) {
-      setSelectedTipo(String(venta.id_tipo_venta || "1"))
-      setIsEditingType(false)
-    }
-  }, [venta, open])
+  const { businessName } = useBusiness()
+  const [facturando, setFacturando] = useState(false)
+  const [imprimiendo, setImprimiendo] = useState(false)
 
   if (!venta) return null
+  const v = venta as any
 
-  // Casteamos a 'any' para acceder a propiedades fiscales sin errores de TS si no actualizaste el type
-  const v = venta as any; 
-  const tieneFactura = !!v.cae; // Verificamos si tiene CAE
-
-  // --- ACTUALIZAR TIPO DE VENTA (Solo si no es fiscal) ---
-  const handleSaveTipo = async () => {
-    setIsSaving(true)
+  const handleFacturar = async () => {
+    setFacturando(true)
     try {
-      await ventaService.updateTipoVenta(venta.id, Number(selectedTipo))
-      toast({ title: "Actualizado", description: "Tipo de venta modificado correctamente." })
-      setIsEditingType(false)
-      if (onVentaUpdated) onVentaUpdated() 
-    } catch (error) {
-      console.error(error)
-      toast({ title: "Error", description: "No se pudo actualizar el tipo.", variant: "destructive" })
+      const f = await ventaService.facturar(venta.id)
+      toast({ title: `${f.tipo_comprobante} ${f.nro_comprobante} autorizada`, description: `CAE ${f.cae}` })
+    } catch (e: any) {
+      toast({ title: "Factura no emitida", description: e.message, variant: "destructive", duration: 10000 })
     } finally {
-      setIsSaving(false)
+      setFacturando(false)
+      onVentaUpdated?.()
     }
   }
 
-  // --- GENERAR PDF ---
   const handlePrint = async () => {
-    if (!venta) return;
-    
-    setIsPrinting(true);
+    setImprimiendo(true)
     try {
-       // Preparamos los datos de tu empresa para la factura
-       const businessData = {
-           name: businessName || "Mi Negocio",
-           cuit: "20-12345678-9", // Puedes traerlo del contexto a futuro
-           logoUrl: logoUrl, // URL del logo que subiste a Supabase
-           address: "Dirección Comercial" // Puedes parametrizarlo luego
-       };
-
-       // Llamamos a la utilidad que crea el PDF
-       await generateInvoicePDF(v, businessData);
-       
-       toast({ title: "PDF Generado", description: "La descarga ha comenzado." });
+      const { data: fiscal } = await supabase.from("comercio_fiscal").select("*").maybeSingle()
+      await generateInvoicePDF(v, fiscal, businessName)
     } catch (error) {
-       console.error("Error PDF:", error);
-       toast({ title: "Error", description: "No se pudo generar el PDF.", variant: "destructive" });
+      console.error("Error PDF:", error)
+      toast({ title: "No se pudo generar el PDF", description: "Probá de nuevo.", variant: "destructive" })
     } finally {
-       setIsPrinting(false);
+      setImprimiendo(false)
     }
- }
+  }
 
-  const tipoDescripcion = venta.tipo_venta?.descripcion || "Orden de Compra";
+  const receptor =
+    v.doc_tipo === DOC.CUIT ? `CUIT ${v.doc_nro}` : v.doc_tipo === DOC.DNI ? `DNI ${v.doc_nro}` : v.cliente_cuit ? `CUIT ${v.cliente_cuit}` : "Consumidor final"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex justify-between items-start">
-              <div>
-                  <DialogTitle className="text-xl">Venta #{venta.id}</DialogTitle>
-                  <DialogDescription>
-                    Realizada el {venta.fecha} a las {venta.hora}
-                  </DialogDescription>
-              </div>
-              {/* Badges de estado */}
-              <div className="flex gap-2">
-                 {tieneFactura ? (
-                    <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1 border border-green-200">
-                        <ShieldCheck className="w-3 h-3" /> Fiscal (AFIP)
-                    </span>
-                 ) : (
-                    <span className="bg-slate-100 text-slate-600 text-xs px-2 py-1 rounded-full font-medium border border-slate-200">
-                        Interna
-                    </span>
-                 )}
-              </div>
-          </div>
+          <DialogTitle className="font-display text-3xl font-bold">Venta #{venta.id}</DialogTitle>
+          <DialogDescription>
+            {fecha(venta.fecha)}, {venta.hora?.substring(0, 5)} h · Caja #{venta.id_caja}
+            {v.medio_pago && ` · ${MEDIO[v.medio_pago]}`}
+          </DialogDescription>
         </DialogHeader>
 
-        {/* 1. SECCIÓN DE DATOS PRINCIPALES */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-2">
-            {/* Bloque Izquierdo: Datos Internos */}
-            <div className="bg-muted/20 p-4 rounded-lg space-y-3 text-sm">
-                <div className="flex items-center justify-between h-8">
-                    <span className="font-semibold text-muted-foreground">Tipo de Venta:</span>
-                    
-                    {/* Solo permitimos editar si NO tiene factura fiscal */}
-                    {isEditingType && !tieneFactura ? (
-                    <div className="flex items-center gap-2">
-                        <Select value={selectedTipo} onValueChange={setSelectedTipo}>
-                        <SelectTrigger className="w-[140px] h-8 text-xs">
-                            <SelectValue placeholder="Tipo" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="1">Orden de Compra</SelectItem>
-                            <SelectItem value="2">Factura B</SelectItem>
-                        </SelectContent>
-                        </Select>
-                        <Button size="icon" className="h-8 w-8" onClick={handleSaveTipo} disabled={isSaving}>
-                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setIsEditingType(false)}>
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </div>
-                    ) : (
-                    <div className="flex items-center gap-2">
-                        <span className="font-medium">{tieneFactura ? v.tipo_comprobante : tipoDescripcion}</span>
-                        {!tieneFactura && (
-                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-primary" onClick={() => setIsEditingType(true)}>
-                                <Pencil className="h-3 w-3" />
-                            </Button>
-                        )}
-                    </div>
-                    )}
-                </div>
-
-                <div className="flex items-center justify-between">
-                    <span className="font-semibold text-muted-foreground">Caja ID:</span> 
-                    <span>#{venta.id_caja}</span>
-                </div>
+        {/* Estado fiscal: siempre con ícono + texto */}
+        <section className="rounded-md border p-4 text-sm">
+          {v.estado_fiscal === "autorizada" ? (
+            <div className="space-y-3">
+              <p className="flex items-center gap-2 font-semibold">
+                <ShieldCheck className="h-4 w-4 text-ok" aria-hidden /> {v.tipo_comprobante} {v.nro_comprobante}
+              </p>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                <div><dt className="text-muted-foreground">CAE</dt><dd className="font-medium break-all">{v.cae}</dd></div>
+                <div><dt className="text-muted-foreground">Vence</dt><dd className="font-medium">{fecha(v.vto_cae)}</dd></div>
+                <div><dt className="text-muted-foreground">Cliente</dt><dd className="font-medium">{receptor}</dd></div>
+              </dl>
             </div>
+          ) : v.estado_fiscal === "no_aplica" || !v.estado_fiscal ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-muted-foreground">Esta venta se registró sin factura.</p>
+              <Button variant="outline" size="sm" onClick={handleFacturar} disabled={facturando}>
+                {facturando && <Loader2 className="animate-spin" />} Emitir factura
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="flex items-center gap-2 font-semibold">
+                  {v.estado_fiscal === "error" ? (
+                    <><AlertTriangle className="h-4 w-4 text-destructive" aria-hidden /> La factura no se emitió</>
+                  ) : (
+                    <><Clock className="h-4 w-4" aria-hidden /> Factura pendiente</>
+                  )}
+                </p>
+                {v.error_fiscal && <p className="text-muted-foreground">{v.error_fiscal}</p>}
+                {v.estado_fiscal === "procesando" && (
+                  <p className="text-muted-foreground">Se está pidiendo el CAE. Si sigue así varios minutos, revisá en ARCA antes de reintentar.</p>
+                )}
+              </div>
+              {v.estado_fiscal !== "procesando" && (
+                <Button size="sm" onClick={handleFacturar} disabled={facturando} className="font-semibold">
+                  {facturando && <Loader2 className="animate-spin" />} {v.estado_fiscal === "error" ? "Reintentar" : "Facturar ahora"}
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
 
-            {/* Bloque Derecho: DATOS FISCALES (Nuevo) */}
-            {tieneFactura ? (
-                <div className="bg-green-50 border border-green-100 p-4 rounded-lg space-y-3 text-sm">
-                     <h4 className="font-semibold text-green-800 flex items-center gap-2 border-b border-green-200 pb-1 mb-2">
-                        <FileText className="h-4 w-4"/> Datos de Facturación
-                     </h4>
-                     
-                     <div className="grid grid-cols-2 gap-2">
-                        <div>
-                            <p className="text-xs text-green-700">Comprobante</p>
-                            <p className="font-medium text-green-900">{v.nro_comprobante}</p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-green-700">CAE</p>
-                            <p className="font-medium text-green-900 font-mono">{v.cae}</p>
-                        </div>
-                        <div className="col-span-2 flex items-center gap-2 mt-1">
-                            <Calendar className="h-3 w-3 text-green-600"/>
-                            <p className="text-xs text-green-700">
-                                Vencimiento CAE: <span className="font-medium">{v.vto_cae}</span>
-                            </p>
-                        </div>
-                     </div>
-                </div>
-            ) : (
-                <div className="bg-slate-50 border border-slate-100 p-4 rounded-lg flex flex-col items-center justify-center text-center text-muted-foreground text-sm">
-                    <p>Esta venta no tiene comprobante fiscal asociado.</p>
-                </div>
-            )}
-        </div>
-
-        {/* 2. TABLA DE PRODUCTOS */}
-        <div className="border rounded-md mt-2 max-h-[300px] overflow-y-auto">
+        <div className="max-h-[300px] overflow-y-auto rounded-md border">
           <Table>
-            <TableHeader className="bg-muted/50 sticky top-0">
+            <TableHeader className="sticky top-0 bg-card">
               <TableRow>
                 <TableHead>Producto</TableHead>
-                <TableHead>Código</TableHead>
                 <TableHead className="text-right">Cant.</TableHead>
-                <TableHead className="text-right">Precio U.</TableHead>
+                <TableHead className="text-right">Precio</TableHead>
                 <TableHead className="text-right">Subtotal</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {venta.venta_detalle?.map((detalle) => (
-                <TableRow key={detalle.id}>
+              {venta.venta_detalle?.map((d: any) => (
+                <TableRow key={d.id}>
                   <TableCell className="font-medium">
-                    {(detalle as any).descripcion || detalle.producto?.nombre || "Producto eliminado"}
+                    {d.descripcion || d.producto?.nombre || "Producto borrado del inventario"}
+                    {d.producto?.codigo && <span className="block text-xs text-muted-foreground">{d.producto.codigo}</span>}
                   </TableCell>
-                  <TableCell>
-                    {detalle.producto?.codigo || "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {detalle.cantidad}
-                  </TableCell>
-                  <TableCell className="text-right text-muted-foreground">
-                    ${Number((detalle as any).precio_unitario || detalle.producto?.precio_lista || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right font-bold">
-                    ${Number(detalle.subtotal).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                  </TableCell>
+                  <TableCell className="text-right">{d.cantidad}</TableCell>
+                  <TableCell className="text-right">{money(d.precio_unitario || d.producto?.precio_lista || 0)}</TableCell>
+                  <TableCell className="text-right font-semibold">{money(d.subtotal)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
 
-        {/* 3. TOTALES Y ACCIONES */}
-        <DialogFooter className="flex sm:justify-between items-center mt-4 border-t pt-4">
-             <div className="flex gap-2">
-                 {/* BOTÓN DE IMPRIMIR */}
-                 <Button variant="outline" onClick={handlePrint} disabled={isPrinting}>
-                    {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-                    Imprimir Comprobante
-                 </Button>
-             </div>
-
-             <div className="text-3xl font-bold">
-                Total: ${Number(venta.total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-             </div>
+        <DialogFooter className="flex items-center sm:justify-between">
+          <Button variant="outline" onClick={handlePrint} disabled={imprimiendo}>
+            {imprimiendo ? <Loader2 className="animate-spin" /> : <Printer />}
+            {v.estado_fiscal === "autorizada" ? "Descargar factura" : "Descargar comprobante"}
+          </Button>
+          <p className="font-display text-4xl font-bold">{money(venta.total)}</p>
         </DialogFooter>
-
       </DialogContent>
     </Dialog>
   )

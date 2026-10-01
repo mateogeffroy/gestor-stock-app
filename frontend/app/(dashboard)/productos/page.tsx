@@ -3,7 +3,6 @@
 import type React from "react"
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -18,7 +17,6 @@ import {
   PaginationEllipsis 
 } from "@/components/ui/pagination"
 import { Plus, Search, Edit, Trash2, Loader2 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 import { productoService, type Producto, type ProductoInsert } from "@/services/producto-service"
 import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
@@ -27,11 +25,11 @@ import { useEsDemo } from "@/hooks/use-es-demo" // Asegúrate de tener este hook
 const highlightMatches = (text: string, searchTerm: string) => {
   if (!text) return "-";
   if (!searchTerm.trim()) return text;
-  const regex = new RegExp(`(${searchTerm})`, 'gi');
+  const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
   const parts = text.split(regex);
   return parts.map((part, index) =>
     part.toLowerCase() === searchTerm.toLowerCase() ? (
-      <span key={index} className="bg-red-400/20 rounded-sm">{part}</span>
+      <mark key={index} className="bg-primary/30 text-inherit rounded-sm">{part}</mark>
     ) : (part)
   );
 };
@@ -51,7 +49,7 @@ export default function ProductosPage() {
   // ESTADOS DE PAGINACIÓN
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const ITEMS_PER_PAGE = 5; 
+  const ITEMS_PER_PAGE = 20; 
 
   const [nuevoProducto, setNuevoProducto] = useState({
     nombre: "",
@@ -217,17 +215,17 @@ export default function ProductosPage() {
       }
 
       if (!productoData.nombre || isNaN(productoData.stock) || isNaN(productoData.precio_lista)) {
-        toast({ title: "Error de validación", description: "Nombre, stock y precio de venta son obligatorios.", variant: "destructive" });
+        toast({ title: "Faltan datos", description: "Completá nombre, precio de venta y stock.", variant: "destructive" });
         return;
       }
 
       if (editingProducto) {
         await productoService.updateProducto(editingProducto.id, productoData)
-        toast({ title: "Éxito", description: "Producto actualizado correctamente" })
+        toast({ title: "Cambios guardados" })
         loadProductos(currentPage, searchTerm)
       } else {
         await productoService.createProducto(productoData)
-        toast({ title: "Éxito", description: "Producto creado correctamente" })
+        toast({ title: "Producto creado" })
         loadProductos(1, "") 
       }
       setIsDialogOpen(false)
@@ -251,7 +249,7 @@ export default function ProductosPage() {
     if (confirm("¿Estás seguro de que deseas eliminar este producto?")) {
       try {
         await productoService.deleteProducto(id)
-        toast({ title: "Éxito", description: "Producto eliminado correctamente" })
+        toast({ title: "Producto eliminado" })
         if (productos.length === 1 && currentPage > 1) {
           loadProductos(currentPage - 1, searchTerm);
         } else {
@@ -266,99 +264,78 @@ export default function ProductosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Productos</h1>
-        <p className="text-muted-foreground">Gestiona el inventario de productos (Supabase)</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <h1 className="page-title">Productos</h1>
+        <Button onClick={() => handleOpenDialog()} className="font-semibold">
+          <Plus /> Nuevo producto
+        </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input type="search" placeholder="Buscar por nombre o código..." className="pl-8 w-full" value={searchTerm} onChange={handleSearchChange} />
-          {isSearching && <div className="absolute right-2.5 top-2.5"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>}
-        </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-          {/* Botón habilitado visualmente */}
-          <Button onClick={() => handleOpenDialog()} className="w-full sm:w-auto">
-             <Plus className="mr-2 h-4 w-4" /> Nuevo Producto
-          </Button>
-        </div>
+      <div className="relative w-full sm:w-96">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input type="search" aria-label="Buscar productos" placeholder="Buscar por nombre o código" className="pl-9 bg-card" value={searchTerm} onChange={handleSearchChange} />
+        {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
-      <Card>
-        <CardHeader className="p-4"><CardTitle>Listado de Productos</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Código</TableHead>
-                    <TableHead>Costo</TableHead>
-                    <TableHead>Utilidad %</TableHead>
-                    <TableHead>Precio Venta</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <AnimatePresence>
-                    {productos.length > 0 ? (
-                      productos.map((producto) => (
-                        <motion.tr 
-                          key={producto.id} 
-                          initial={{ opacity: 0 }} 
-                          animate={{ opacity: 1 }} 
-                          exit={{ opacity: 0 }} 
-                          transition={{ duration: 0.2 }} 
-                          className="border-b cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={() => handleOpenDialog(producto)}
-                        >
-                          <TableCell className="font-medium">{highlightMatches(producto.nombre, searchTerm)}</TableCell>
-                          <TableCell>{highlightMatches(producto.codigo || "-", searchTerm)}</TableCell>
-                          <TableCell className="text-muted-foreground">${Number(producto.precio_costo).toLocaleString('es-AR')}</TableCell>
-                          <TableCell>{producto.porcentaje_utilidad ? `${Number(producto.porcentaje_utilidad).toFixed(2)}%` : "-"}</TableCell>
-                          <TableCell className="font-bold text-green-600">${Number(producto.precio_lista).toLocaleString('es-AR')}</TableCell>
-                          <TableCell>{producto.stock}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              {/* Botón EDITAR: Visualmente normal */}
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={(e) => { e.stopPropagation(); handleOpenDialog(producto); }}
-                                title="Editar"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-
-                              {/* Botón ELIMINAR: Visualmente normal */}
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={(e) => { e.stopPropagation(); handleDelete(producto.id); }}
-                                className="text-red-500 hover:bg-red-50 hover:text-red-600"
-                                title="Eliminar"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </motion.tr>
-                      ))
-                    ) : (
-                      <tr><TableCell colSpan={7} className="text-center py-6">{searchTerm ? `No se encontraron productos con "${searchTerm}"` : "No hay productos disponibles"}</TableCell></tr>
-                    )}
-                  </AnimatePresence>
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="rounded-md border bg-card overflow-x-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead className="text-right">Costo</TableHead>
+                <TableHead className="text-right">Margen</TableHead>
+                <TableHead className="text-right">Precio</TableHead>
+                <TableHead className="text-right">Stock</TableHead>
+                <TableHead className="w-24"><span className="sr-only">Acciones</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {productos.length > 0 ? (
+                productos.map((producto) => (
+                  <tr
+                    key={producto.id}
+                    className="border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleOpenDialog(producto)}
+                  >
+                    <TableCell className="font-medium">{highlightMatches(producto.nombre, searchTerm)}</TableCell>
+                    <TableCell>{highlightMatches(producto.codigo || "-", searchTerm)}</TableCell>
+                    <TableCell className="text-right">${Number(producto.precio_costo).toLocaleString('es-AR')}</TableCell>
+                    <TableCell className="text-right">{producto.porcentaje_utilidad ? `${Number(producto.porcentaje_utilidad).toFixed(0)}%` : "-"}</TableCell>
+                    <TableCell className="text-right font-semibold">${Number(producto.precio_lista).toLocaleString('es-AR')}</TableCell>
+                    <TableCell className="text-right">
+                      {producto.stock <= 0 ? <span className="font-semibold text-destructive">Sin stock</span> : producto.stock}
+                    </TableCell>
+                    <TableCell className="text-right whitespace-nowrap">
+                      <Button variant="ghost" size="icon" aria-label={`Editar ${producto.nombre}`} onClick={(e) => { e.stopPropagation(); handleOpenDialog(producto); }}>
+                        <Edit />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Eliminar ${producto.nombre}`}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(producto.id); }}
+                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 />
+                      </Button>
+                    </TableCell>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    {searchTerm ? `Ningún producto coincide con "${searchTerm}".` : "El inventario está vacío. Cargá tu primer producto."}
+                  </TableCell>
+                </tr>
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </div>
 
       {totalPages > 1 && !isLoading && (
         <Pagination>
@@ -378,26 +355,25 @@ export default function ProductosPage() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>{editingProducto ? "Editar Producto" : "Nuevo Producto"}</DialogTitle>
-            <DialogDescription>{editingProducto ? "Modifica los datos del producto." : "Completa los datos para agregar un producto."}</DialogDescription>
+            <DialogTitle className="font-display text-3xl font-bold">{editingProducto ? "Editar producto" : "Nuevo producto"}</DialogTitle>
+            <DialogDescription>Si cargás costo y margen, el precio se calcula solo.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
              <div className="grid grid-cols-1 gap-4">
-               <div className="space-y-2"><Label htmlFor="nombre">Nombre *</Label><Input id="nombre" placeholder="Nombre del producto" value={nuevoProducto.nombre} onChange={(e) => setNuevoProducto({ ...nuevoProducto, nombre: e.target.value })} required /></div>
-               <div className="space-y-2"><Label htmlFor="codigo">Código de Barras</Label><Input id="codigo" placeholder="(opcional)" value={nuevoProducto.codigo} onChange={(e) => setNuevoProducto({ ...nuevoProducto, codigo: e.target.value })} /></div>
+               <div className="space-y-2"><Label htmlFor="nombre">Nombre</Label><Input id="nombre" value={nuevoProducto.nombre} onChange={(e) => setNuevoProducto({ ...nuevoProducto, nombre: e.target.value })} required /></div>
+               <div className="space-y-2"><Label htmlFor="codigo">Código de barras <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="codigo" value={nuevoProducto.codigo} onChange={(e) => setNuevoProducto({ ...nuevoProducto, codigo: e.target.value })} /></div>
                <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2"><Label htmlFor="precio_costo">Precio Costo</Label><Input id="precio_costo" type="number" step="0.01" value={nuevoProducto.precio_costo} onChange={(e) => handlePrecioCostoChange(e.target.value)} /></div>
-                 <div className="space-y-2"><Label htmlFor="utilidad_porcentual">Utilidad (%)</Label><Input id="utilidad_porcentual" type="number" step="0.01" value={nuevoProducto.utilidad_porcentual} onChange={(e) => handleUtilidadChange(e.target.value)} /></div>
+                 <div className="space-y-2"><Label htmlFor="precio_costo">Costo</Label><Input id="precio_costo" type="number" step="0.01" value={nuevoProducto.precio_costo} onChange={(e) => handlePrecioCostoChange(e.target.value)} /></div>
+                 <div className="space-y-2"><Label htmlFor="utilidad_porcentual">Margen %</Label><Input id="utilidad_porcentual" type="number" step="0.01" value={nuevoProducto.utilidad_porcentual} onChange={(e) => handleUtilidadChange(e.target.value)} /></div>
                </div>
-               <div className="space-y-2"><Label htmlFor="precio_lista" className="font-bold">Precio Venta (Final) *</Label><Input id="precio_lista" type="number" step="0.01" className="font-bold border-green-500" value={nuevoProducto.precio_lista} onChange={(e) => handlePrecioVentaChange(e.target.value)} required /></div>
-               <div className="space-y-2"><Label htmlFor="stock">Stock *</Label><Input id="stock" type="number" value={nuevoProducto.stock} onChange={(e) => setNuevoProducto({ ...nuevoProducto, stock: e.target.value })} required /></div>
+               <div className="space-y-2"><Label htmlFor="precio_lista">Precio de venta</Label><Input id="precio_lista" type="number" step="0.01" className="h-12 text-lg font-semibold" value={nuevoProducto.precio_lista} onChange={(e) => handlePrecioVentaChange(e.target.value)} required /></div>
+               <div className="space-y-2"><Label htmlFor="stock">Stock</Label><Input id="stock" type="number" value={nuevoProducto.stock} onChange={(e) => setNuevoProducto({ ...nuevoProducto, stock: e.target.value })} required /></div>
              </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-            {/* Botón Guardar siempre habilitado visualmente */}
-            <Button onClick={handleSubmit}>
-                Guardar
+            <Button onClick={handleSubmit} className="font-semibold">
+                {editingProducto ? "Guardar cambios" : "Crear producto"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,187 +1,159 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
+import QRCode from "qrcode"
+import { LETRA, CBTE, DOC, CONDICIONES_RECEPTOR_UI, urlQr } from "@/lib/arca/fiscal"
 
-// Definimos tipos mínimos para no tener problemas de TS
-interface BusinessData {
-  name: string;
-  cuit: string;
-  logoUrl?: string | null;
-  startActivity?: string; // Inicio de actividades
-  address?: string;
+export interface ComercioFiscal {
+  cuit: string
+  razon_social: string
+  condicion_iva: "RI" | "MT" | "EX"
+  punto_venta: number
+  domicilio?: string | null
+  ingresos_brutos?: string | null
+  inicio_actividades?: string | null
 }
 
-export const generateInvoicePDF = async (venta: any, business: BusinessData) => {
-  const doc = new jsPDF();
+const CONDICION_EMISOR = { RI: "IVA Responsable Inscripto", MT: "Responsable Monotributo", EX: "IVA Sujeto Exento" }
+const money = (n: number) => `$ ${Number(n).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const fecha = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "-")
+const cuitFmt = (c?: string | number | null) => {
+  const s = String(c ?? "")
+  return s.length === 11 ? `${s.slice(0, 2)}-${s.slice(2, 10)}-${s.slice(10)}` : s
+}
 
-  // --- CONFIGURACIÓN ---
-  const pageWidth = doc.internal.pageSize.width;
-  const pageHeight = doc.internal.pageSize.height;
-  const margin = 10;
-  
-  // Colores y Estilos
-  doc.setFont("helvetica");
-  
-  // --- 1. ENCABEZADO (CAJA GRIS DE FONDO) ---
-  // Dibujamos un rectángulo bordeado para el encabezado
-  // doc.setDrawColor(0);
-  // doc.rect(margin, margin, pageWidth - (margin * 2), 40); // Caja contenedora
+// Comprobante en PDF. Con CAE: factura electrónica con los datos de RG 1415, QR (RG 4291) y,
+// en Factura B, el IVA contenido (Ley 27.743). Sin CAE: constancia interna "no válida como factura".
+export async function generateInvoicePDF(venta: any, fiscal: ComercioFiscal | null, nombreComercio: string) {
+  const doc = new jsPDF()
+  const W = doc.internal.pageSize.width
+  const M = 12
+  const esFactura = venta.estado_fiscal === "autorizada" && venta.cae && fiscal
+  const letra = esFactura ? LETRA[venta.cbte_tipo] : "X"
 
-  // --- 2. LOGO Y DATOS DEL EMISOR (IZQUIERDA) ---
-  const leftX = margin + 5;
-  let currentY = margin + 10;
+  // Recuadro de encabezado con la letra al centro
+  doc.setDrawColor(0)
+  doc.rect(M, M, W - 2 * M, 46)
+  doc.line(W / 2, M + 16, W / 2, M + 46)
+  doc.rect(W / 2 - 8, M, 16, 16)
+  doc.setFont("helvetica", "bold").setFontSize(20)
+  doc.text(letra, W / 2, M + 10, { align: "center" })
+  doc.setFontSize(6)
+  doc.text(esFactura ? `COD. ${String(venta.cbte_tipo).padStart(3, "0")}` : "", W / 2, M + 14.5, { align: "center" })
 
-  // Intentar cargar logo si existe
-  if (business.logoUrl) {
-    try {
-        // Convertir imagen a Base64 o usarla directamente si el navegador lo permite
-        // Por simplicidad, aquí dibujamos un cuadro placeholder si falla, 
-        // pero jsPDF soporta URLs si no hay problemas de CORS.
-        const img = new Image();
-        img.src = business.logoUrl;
-        // Esperamos un poco a que cargue (truco rápido) o dibujamos
-        doc.addImage(img, "PNG", leftX, currentY, 20, 20);
-        currentY += 25; 
-    } catch (e) {
-        // Si falla, solo texto
+  // Emisor (izquierda)
+  doc.setFontSize(13).text(fiscal?.razon_social || nombreComercio || "Mi comercio", M + 4, M + 24)
+  doc.setFont("helvetica", "normal").setFontSize(8.5)
+  let y = M + 30
+  if (fiscal) {
+    for (const linea of [fiscal.domicilio || "", CONDICION_EMISOR[fiscal.condicion_iva]]) {
+      doc.text(linea, M + 4, y)
+      y += 4.5
     }
   }
 
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text(business.name || "Mi Negocio", leftX, currentY);
-  
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  currentY += 5;
-  doc.text(business.address || "Dirección del negocio", leftX, currentY);
-  currentY += 5;
-  doc.text("Condición IVA: Responsable Inscripto", leftX, currentY); // O lo que corresponda
+  // Datos del comprobante (derecha)
+  const X = W / 2 + 6
+  doc.setFont("helvetica", "bold").setFontSize(13)
+  doc.text(esFactura ? "FACTURA" : "COMPROBANTE INTERNO", X, M + 24)
+  doc.setFontSize(9)
+  doc.text(esFactura ? `Nº ${venta.nro_comprobante}` : `Venta #${venta.id}`, X, M + 30)
+  doc.setFont("helvetica", "normal").setFontSize(8.5)
+  y = M + 35
+  const derecha = [`Fecha de emisión: ${fecha(venta.fecha)}`]
+  if (fiscal)
+    derecha.push(
+      `CUIT: ${cuitFmt(fiscal.cuit)}`,
+      `Ingresos Brutos: ${fiscal.ingresos_brutos || cuitFmt(fiscal.cuit)}`,
+      `Inicio de actividades: ${fecha(fiscal.inicio_actividades)}`
+    )
+  for (const l of derecha) {
+    doc.text(l, X, y)
+    y += 4
+  }
 
-  // --- 3. CUADRO DE TIPO DE FACTURA (CENTRO) ---
-  // El famoso cuadradito con la letra "A", "B" o "C"
-  const centerX = pageWidth / 2;
-  const boxSize = 12;
-  
-  doc.setDrawColor(0);
-  doc.setFillColor(255, 255, 255);
-  doc.rect(centerX - (boxSize/2), margin, boxSize, boxSize, "FD"); // Cuadro
-  
-  doc.setFontSize(18);
-  doc.setFont("helvetica", "bold");
-  // Extraemos la letra del tipo de comprobante (Ej: "Factura B" -> "B")
-  const letra = venta.tipo_comprobante ? venta.tipo_comprobante.slice(-1) : "X";
-  doc.text(letra, centerX - 2.5, margin + 8);
-  
-  doc.setFontSize(7);
-  doc.text(`COD. ${letra === 'A' ? '001' : letra === 'B' ? '006' : '011'}`, centerX - 5, margin + 16);
+  // Receptor
+  y = M + 54
+  const condicion = CONDICIONES_RECEPTOR_UI.find((c) => c.id === (venta.condicion_iva_receptor ?? 5))?.label ?? "Consumidor final"
+  const docRec =
+    venta.doc_tipo === DOC.CUIT ? `CUIT: ${cuitFmt(venta.doc_nro)}`
+    : venta.doc_tipo === DOC.DNI ? `DNI: ${venta.doc_nro}`
+    : venta.cliente_cuit ? `CUIT: ${cuitFmt(venta.cliente_cuit)}` : "Sin identificar"
+  doc.rect(M, y - 5, W - 2 * M, 14)
+  doc.text(`${docRec}`, M + 4, y)
+  doc.text(`Apellido y nombre / Razón social: ${venta.cliente_nombre || "Consumidor final"}`, X - 30, y)
+  doc.text(`Condición frente al IVA: ${condicion}`, M + 4, y + 5)
+  doc.text(`Domicilio: ${venta.cliente_direccion || "-"}`, X - 30, y + 5)
 
-
-  // --- 4. DATOS DE LA FACTURA (DERECHA) ---
-  const rightX = pageWidth / 2 + 20;
-  let rightY = margin + 10;
-
-  doc.setFontSize(16);
-  doc.setFont("helvetica", "bold");
-  doc.text("FACTURA", rightX, rightY);
-  
-  rightY += 8;
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  // Formato: 00001-00000023
-  const numeroComp = venta.nro_comprobante || `00001-${venta.id.toString().padStart(8, '0')}`;
-  doc.text(`Nº: ${numeroComp}`, rightX, rightY);
-  
-  rightY += 6;
-  doc.setFont("helvetica", "normal");
-  // Formatear fecha (YYYY-MM-DD a DD/MM/YYYY)
-  const [anio, mes, dia] = (venta.fecha || "").split('-');
-  doc.text(`Fecha: ${dia}/${mes}/${anio}`, rightX, rightY);
-  
-  rightY += 6;
-  doc.text(`CUIT: ${business.cuit || "20-12345678-9"}`, rightX, rightY);
-  
-  rightY += 6;
-  doc.text(`Ingresos Brutos: ${business.cuit || "-"}`, rightX, rightY);
-  
-  rightY += 6;
-  doc.text(`Inicio de Actividades: ${business.startActivity || "01/01/2024"}`, rightX, rightY);
-
-  // --- 5. DATOS DEL CLIENTE ---
-  const clientY = margin + 45;
-  doc.line(margin, clientY, pageWidth - margin, clientY); // Línea divisoria
-  
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text("CLIENTE:", margin, clientY + 5);
-  
-  doc.setFont("helvetica", "normal");
-  // Aquí pondrías los datos reales del cliente si los tuvieras
-  doc.text("Nombre: Consumidor Final", margin + 20, clientY + 5);
-  doc.text("CUIT/DNI: 00-00000000-0", margin + 100, clientY + 5);
-  doc.text("Condición IVA: Consumidor Final", margin + 20, clientY + 10);
-  doc.text("Domicilio: -", margin + 100, clientY + 10);
-
-
-  // --- 6. TABLA DE PRODUCTOS ---
-  const tableY = clientY + 15;
-  
-  const tableBody = venta.venta_detalle.map((item: any) => [
-    item.producto?.codigo || "-",
-    (item.descripcion || item.producto?.nombre || "").substring(0, 30), // Cortar nombres largos
-    item.cantidad,
-    `$${Number(item.precio_unitario).toLocaleString("es-AR", {minimumFractionDigits: 2})}`,
-    `$${Number(item.subtotal).toLocaleString("es-AR", {minimumFractionDigits: 2})}`
-  ]);
-
+  // Ítems. En Factura A los precios van sin IVA; en B y C, con IVA incluido.
+  const discrimina = esFactura && venta.cbte_tipo === CBTE.A
+  const factor = discrimina ? Number(venta.imp_neto) / Number(venta.total) : 1
   autoTable(doc, {
-    startY: tableY,
-    head: [['Código', 'Descripción', 'Cant.', 'Precio Unit.', 'Subtotal']],
-    body: tableBody,
-    theme: 'plain', // Estilo limpio tipo factura
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' }, // Gris claro
-    columnStyles: {
-        0: { cellWidth: 25 },
-        2: { cellWidth: 15, halign: 'right' }, // Cantidad alineada a derecha
-        3: { cellWidth: 30, halign: 'right' }, // Precio alineado a derecha
-        4: { cellWidth: 30, halign: 'right' }  // Subtotal alineado a derecha
-    }
-  });
+    startY: y + 14,
+    head: [["Descripción", "Cant.", discrimina ? "Precio unit. (neto)" : "Precio unit.", "Bonif. %", discrimina ? "Subtotal (neto)" : "Subtotal"]],
+    body: (venta.venta_detalle ?? []).map((i: any) => [
+      (i.descripcion || i.producto?.nombre || "").slice(0, 60),
+      i.cantidad,
+      money(Number(i.precio_unitario || 0) * factor),
+      Number(i.descuento || 0) ? `${i.descuento}` : "",
+      money(Number(i.subtotal) * factor),
+    ]),
+    theme: "plain",
+    styles: { fontSize: 8.5 },
+    headStyles: { fillColor: [230, 230, 230], textColor: 0, fontStyle: "bold" },
+    columnStyles: { 1: { halign: "right", cellWidth: 14 }, 2: { halign: "right", cellWidth: 32 }, 3: { halign: "right", cellWidth: 16 }, 4: { halign: "right", cellWidth: 32 } },
+  })
 
-  // --- 7. TOTALES ---
-  // Obtenemos la posición Y donde terminó la tabla
-  const finalY = (doc as any).lastAutoTable.finalY + 10;
-  
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(`TOTAL: $${Number(venta.total).toLocaleString("es-AR", {minimumFractionDigits: 2})}`, pageWidth - margin - 50, finalY);
+  // Totales
+  y = (doc as any).lastAutoTable.finalY + 8
+  const fila = (label: string, valor: string, negrita = false) => {
+    doc.setFont("helvetica", negrita ? "bold" : "normal").setFontSize(negrita ? 11 : 9)
+    doc.text(label, W - M - 60, y)
+    doc.text(valor, W - M, y, { align: "right" })
+    y += negrita ? 7 : 5
+  }
+  if (discrimina) {
+    fila("Importe neto gravado:", money(venta.imp_neto))
+    fila(`IVA:`, money(venta.imp_iva))
+  }
+  fila("Importe total:", money(venta.total), true)
 
-  // --- 8. PIE DE PÁGINA (CAE y VENCIMIENTO) ---
-  // Esto es lo que le da validez legal
-  if (venta.cae) {
-      const footerY = pageHeight - 30;
-      doc.setDrawColor(0);
-      doc.line(margin, footerY, pageWidth - margin, footerY);
-      
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
-      doc.text("CAE Nº:", pageWidth - 80, footerY + 7);
-      doc.setFont("helvetica", "normal");
-      doc.text(venta.cae, pageWidth - 60, footerY + 7);
-      
-      doc.setFont("helvetica", "bold");
-      doc.text("Fecha Vto. CAE:", pageWidth - 80, footerY + 14);
-      doc.setFont("helvetica", "normal");
-      // Formatear fecha de vto (YYYY-MM-DD -> DD/MM/YYYY)
-      const [vAnio, vMes, vDia] = (venta.vto_cae || "").split('-');
-      const vtoFormat = vDia ? `${vDia}/${vMes}/${vAnio}` : venta.vto_cae;
-      doc.text(vtoFormat || "", pageWidth - 50, footerY + 14);
-
-      // Código de Barras (Simulado visualmente con texto por ahora)
-      doc.setFontSize(6);
-      doc.text(`Comprobante Autorizado`, margin, footerY + 7);
+  if (esFactura && venta.cbte_tipo === CBTE.B) {
+    doc.setFont("helvetica", "normal").setFontSize(8)
+    doc.text("Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)", M, y)
+    doc.text(`IVA contenido: ${money(venta.imp_iva)}`, M, y + 4)
+    doc.text("Otros impuestos nacionales indirectos: $ 0,00", M, y + 8)
+    y += 12
   }
 
-  // --- 9. DESCARGAR ---
-  doc.save(`Factura-${venta.nro_comprobante || venta.id}.pdf`);
-};
+  // Pie: CAE + QR, o leyenda de comprobante no fiscal
+  const H = doc.internal.pageSize.height
+  if (esFactura) {
+    const qr = await QRCode.toDataURL(
+      urlQr({
+        fecha: venta.fecha,
+        cuit: Number(fiscal!.cuit),
+        ptoVta: venta.pto_vta,
+        tipoCmp: venta.cbte_tipo,
+        nroCmp: Number(venta.cbte_nro),
+        importe: Number(venta.total),
+        tipoDocRec: venta.doc_tipo ?? DOC.SIN_IDENTIFICAR,
+        nroDocRec: Number(venta.doc_nro ?? 0),
+        cae: venta.cae,
+      }),
+      { margin: 0, width: 300 }
+    )
+    doc.addImage(qr, "PNG", M, H - 42, 30, 30)
+    doc.setFont("helvetica", "bold").setFontSize(9)
+    doc.text("Comprobante autorizado", M + 34, H - 36)
+    doc.setFont("helvetica", "normal").setFontSize(8)
+    doc.text("Esta factura fue autorizada por ARCA. Verificala escaneando el código QR.", M + 34, H - 31)
+    doc.setFont("helvetica", "bold").setFontSize(9)
+    doc.text(`CAE Nº: ${venta.cae}`, W - M, H - 36, { align: "right" })
+    doc.text(`Vencimiento CAE: ${fecha(venta.vto_cae)}`, W - M, H - 31, { align: "right" })
+  } else {
+    doc.setFont("helvetica", "bold").setFontSize(10)
+    doc.text("DOCUMENTO NO VÁLIDO COMO FACTURA", W / 2, H - 30, { align: "center" })
+  }
+
+  doc.save(esFactura ? `Factura-${letra}-${venta.nro_comprobante}.pdf` : `Comprobante-${venta.id}.pdf`)
+}

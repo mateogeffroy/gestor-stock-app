@@ -13,6 +13,7 @@ export interface ResumenCaja {
   totalFacturasB: number;
   totalDia: number;
   cantidadVentas?: number;
+  porMedio?: Record<string, number>;
 }
 
 // Estructura para el detalle de productos dentro de una venta

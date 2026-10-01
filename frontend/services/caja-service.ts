@@ -12,6 +12,7 @@ export interface ResumenCaja {
   totalFacturasB: number;
   totalOrdenesCompra: number;
   cantidadVentas: number;
+  porMedio: Record<string, number>;
 }
 
 export const cajaService = {
@@ -77,7 +78,7 @@ export const cajaService = {
   async getResumenDiario(idCaja: number): Promise<ResumenCaja> {
     const { data: ventas, error } = await supabase
       .from("venta")
-      .select("total, id_tipo_venta")
+      .select("total, id_tipo_venta, medio_pago")
       .eq("id_caja", idCaja);
 
     if (error) throw error;
@@ -92,7 +93,14 @@ export const cajaService = {
         .filter(v => v.id_tipo_venta === 1)
         .reduce((acc, v) => acc + Number(v.total), 0);
 
+    const porMedio: Record<string, number> = {};
+    for (const v of ventas) {
+      const m = v.medio_pago || "sin_dato";
+      porMedio[m] = (porMedio[m] || 0) + Number(v.total);
+    }
+
     return {
+      porMedio,
       totalDia,
       totalFacturasB,
       totalOrdenesCompra,

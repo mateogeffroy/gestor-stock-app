@@ -3,8 +3,7 @@
 import { Venta } from "../types"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Trash2, Pencil, Loader2 } from "lucide-react" 
-import { motion, AnimatePresence } from "framer-motion"
+import { Trash2, Loader2 } from "lucide-react"
 
 interface VentasTableProps {
   ventas: Venta[]
@@ -18,16 +17,16 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
   
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center py-12 border rounded-md bg-white">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex justify-center items-center py-12 border rounded-md bg-card">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (!ventas || ventas.length === 0) {
     return (
-        <div className="text-center py-12 text-muted-foreground border rounded-md bg-white">
-            No hay ventas registradas que coincidan con la búsqueda.
+        <div className="text-center py-12 text-muted-foreground border rounded-md bg-card">
+            No hay ventas con esos filtros. Probá con otro día u horario.
         </div>
     )
   }
@@ -45,40 +44,33 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
   }
 
   return (
-    // Quitamos bordes extra si quieres un look más limpio, o los dejamos sutiles
-    <div className="rounded-md border bg-white shadow-sm">
+    <div className="rounded-md border bg-card overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            {/* CAMBIO 1: Columnas separadas */}
             <TableHead>Fecha</TableHead>
             <TableHead>Hora</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
+            <TableHead>Comprobante</TableHead>
+            <TableHead className="text-right">Total</TableHead>
+            <TableHead className="w-12"><span className="sr-only">Acciones</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          <AnimatePresence>
             {ventas.map((venta) => {
-              const tipoDescripcion = venta.tipo_venta?.descripcion || "Venta General";
-              const esOrdenCompra = tipoDescripcion === "Orden de compra";
-              
-              const badgeColorClass = esOrdenCompra 
-                ? "bg-green-50 text-green-700 ring-green-600/20" 
-                : "bg-blue-50 text-blue-700 ring-blue-700/10";
+              const v = venta as any
+              // Estado fiscal con texto + forma (no solo color)
+              const comprobante =
+                v.estado_fiscal === "autorizada" ? { txt: `${v.tipo_comprobante} ${v.nro_comprobante}`, cls: "border-foreground bg-foreground text-white" }
+                : v.estado_fiscal === "error" ? { txt: "Factura con error", cls: "border-destructive text-destructive" }
+                : v.estado_fiscal === "pendiente" || v.estado_fiscal === "procesando" ? { txt: "Factura pendiente", cls: "border-dashed border-foreground/60" }
+                : { txt: "Sin factura", cls: "border-foreground/30 text-muted-foreground" };
 
               return (
-                <motion.tr
+                <tr
                   key={venta.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="border-b hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="border-b last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
                   onClick={() => onView(venta)}
                 >
-                  {/* CAMBIO 1: Celdas separadas */}
                   <TableCell className="font-medium">
                     {formatearFecha(venta.fecha)}
                   </TableCell>
@@ -88,34 +80,29 @@ export function VentasTable({ ventas, onView, onEdit, onDelete, isLoading }: Ven
                   </TableCell>
                   
                   <TableCell>
-                     <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${badgeColorClass}`}>
-                        {tipoDescripcion}
+                     <span className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${comprobante.cls}`}>
+                        {comprobante.txt}
                       </span>
                   </TableCell>
                   
-                  <TableCell className="font-bold">
+                  <TableCell className="text-right font-semibold">
                     ${Number(venta.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}
                   </TableCell>
                   
-                  <TableCell className="text-right flex gap-1 justify-end">
-                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); onView(venta); }} title="Ver/Editar detalle">
-                      <Pencil className="h-4 w-4 text-blue-500" />
-                    </Button>
-                    
+                  <TableCell className="text-right">
                     <Button 
                       variant="ghost" 
                       size="icon" 
                       onClick={(e) => { e.stopPropagation(); onDelete(venta.id); }}
-                      className="text-red-600 hover:text-red-800 hover:bg-red-100"
-                      title="Eliminar venta"
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      aria-label={`Eliminar venta #${venta.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TableCell>
-                </motion.tr>
+                </tr>
               )
             })}
-          </AnimatePresence>
         </TableBody>
       </Table>
     </div>

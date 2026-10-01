@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { DollarSign, Receipt, CreditCard, ArrowUpRight, Loader2 } from "lucide-react"
-import { motion } from "framer-motion"
+import { Loader2 } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { useToast } from "@/components/ui/use-toast"
 
@@ -98,7 +96,7 @@ export default function CajasPage() {
 
     try {
       await cajaService.cerrarCaja(cajaDelDiaId, resumenDiario.totalDia)
-      toast({ title: "Éxito", description: "Caja cerrada correctamente" })
+      toast({ title: "Caja cerrada", description: money(resumenDiario.totalDia) })
       
       // Recargamos para ver el historial actualizado
       loadCajas()
@@ -132,85 +130,92 @@ export default function CajasPage() {
     loadResumenDiario()
   }, [])
 
-  const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } }
-  const item = { hidden: { y: 20, opacity: 0 }, show: { y: 0, opacity: 1 } }
+  const money = (n: number) => `$${Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2 })}`
+  const fecha = (f: string) => new Date(f + "T00:00:00").toLocaleDateString('es-AR')
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Cajas</h1>
-        <p className="text-muted-foreground">Gestiona las cajas diarias de La Cuerda Bebidas</p>
-      </div>
+    <div className="space-y-8">
+      <h1 className="page-title">Cajas</h1>
 
-      <motion.div className="grid gap-4 md:grid-cols-3" variants={container} initial="hidden" animate="show">
-        <motion.div variants={item}>
-            <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Órdenes de Compra</CardTitle><div className="rounded-full bg-blue-100 p-2 text-blue-500"><Receipt className="h-4 w-4" /></div></CardHeader><CardContent><div className="text-2xl font-bold">${resumenDiario.totalOrdenesCompra.toLocaleString('es-AR')}</div><p className="text-xs text-muted-foreground">Recaudado hoy</p></CardContent></Card>
-        </motion.div>
-        <motion.div variants={item}>
-            <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Facturas Electrónicas B</CardTitle><div className="rounded-full bg-purple-100 p-2 text-purple-500"><CreditCard className="h-4 w-4" /></div></CardHeader><CardContent><div className="text-2xl font-bold">${resumenDiario.totalFacturasB.toLocaleString('es-AR')}</div><p className="text-xs text-muted-foreground">Recaudado hoy</p></CardContent></Card>
-        </motion.div>
-        <motion.div variants={item}>
-            <Card><CardHeader className="flex flex-row items-center justify-between pb-2"><CardTitle className="text-sm font-medium">Total del Día</CardTitle><div className="rounded-full bg-green-100 p-2 text-green-500"><DollarSign className="h-4 w-4" /></div></CardHeader><CardContent><div className="text-2xl font-bold">${resumenDiario.totalDia.toLocaleString('es-AR')}</div><p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><ArrowUpRight className="h-3 w-3 text-green-500" /><span>Pendiente de cierre</span></p></CardContent></Card>
-        </motion.div>
-      </motion.div>
-
-      <div className="flex justify-end">
-        {/* Botón visualmente habilitado siempre */}
-        <Button onClick={() => setIsAlertOpen(true)} disabled={resumenDiario.totalDia === 0}>
-          Cerrar Caja
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle>Historial de Cajas</CardTitle></CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex justify-center items-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
-          ) : (
-            <div className="overflow-x-auto">
+      <div className="grid items-start gap-10 lg:grid-cols-[1fr_340px]">
+        <section className="order-2 lg:order-1 min-w-0">
+          <h2 className="mb-3 text-lg font-semibold">Cierres anteriores</h2>
+          <div className="rounded-md border bg-card overflow-x-auto">
+            {isLoading ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+            ) : cajas.length === 0 ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">Cuando cierres tu primera caja, va a aparecer acá.</p>
+            ) : (
               <Table>
-                <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Fecha</TableHead><TableHead>Total Recaudado</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+                <TableHeader><TableRow><TableHead>Caja</TableHead><TableHead>Fecha</TableHead><TableHead className="text-right">Recaudado</TableHead><TableHead className="w-28"><span className="sr-only">Acciones</span></TableHead></TableRow></TableHeader>
                 <TableBody>
                   {cajas.map((caja) => (
                     <TableRow key={caja.id}>
-                      <TableCell className="font-medium">{caja.id}</TableCell>
-                      {/* Ajuste: Usamos caja.fecha (string YYYY-MM-DD) y le agregamos hora para que JS no reste un día por timezone */}
-                      <TableCell>{new Date(caja.fecha + "T00:00:00").toLocaleDateString('es-AR')}</TableCell>
-                      <TableCell className="text-green-600 font-medium">
-                        ${Number(caja.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}
-                      </TableCell>
-                      <TableCell className="text-right"><Button variant="outline" size="sm" onClick={() => handleVerDetalle(caja)}>Ver Detalle</Button></TableCell>
+                      <TableCell className="text-muted-foreground">#{caja.id}</TableCell>
+                      <TableCell>{fecha(caja.fecha)}</TableCell>
+                      <TableCell className="text-right font-semibold">{money(caja.total)}</TableCell>
+                      <TableCell className="text-right"><Button variant="ghost" size="sm" onClick={() => handleVerDetalle(caja)}>Ver ventas</Button></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </div>
+        </section>
+
+        <section className="order-1 lg:order-2 lg:sticky lg:top-6">
+          <h2 className="mb-3 text-lg font-semibold">Caja de hoy</h2>
+          <div className="ticket rounded-t-md border border-b-0 px-5 pt-5 space-y-3">
+            {cajaDelDiaId ? (
+              <p className="text-sm text-muted-foreground">Caja #{cajaDelDiaId} abierta</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No hay caja abierta. Se abre sola con la primera venta.</p>
+            )}
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between"><dt>Con factura</dt><dd>{money(resumenDiario.totalFacturasB)}</dd></div>
+              <div className="flex justify-between"><dt>Sin factura</dt><dd>{money(resumenDiario.totalOrdenesCompra)}</dd></div>
+            </dl>
+            <dl className="ticket-rule space-y-2 pt-3 text-sm">
+              {Object.entries(resumenDiario.porMedio ?? {}).map(([m, t]) => (
+                <div key={m} className="flex justify-between">
+                  <dt>{({ efectivo: "Efectivo en caja", debito: "Débito", credito: "Crédito", transferencia: "Transferencia", qr: "QR", otro: "Otro", sin_dato: "Sin medio cargado" } as Record<string, string>)[m] ?? m}</dt>
+                  <dd>{money(t)}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="ticket-rule pt-3">
+              <p className="text-sm text-muted-foreground">Total del día</p>
+              <p className="font-display text-5xl font-bold leading-tight break-all">{money(resumenDiario.totalDia)}</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <Button onClick={() => setIsAlertOpen(true)} disabled={resumenDiario.totalDia === 0} size="lg" className="w-full font-semibold">
+              Cerrar caja
+            </Button>
+          </div>
+        </section>
+      </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Detalle de Caja</DialogTitle>
-            {selectedCaja && <DialogDescription>Caja del día {new Date(selectedCaja.fecha + "T00:00:00").toLocaleDateString('es-AR')}</DialogDescription>}
+            <DialogTitle className="font-display text-3xl font-bold">Caja #{selectedCaja?.id}</DialogTitle>
+            {selectedCaja && <DialogDescription>{fecha(selectedCaja.fecha)}</DialogDescription>}
           </DialogHeader>
           <div className="py-4 max-h-[60vh] overflow-y-auto">
             {isDetalleLoading ? (
-              <div className="flex justify-center items-center py-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
+              <div className="flex justify-center items-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
             ) : selectedCaja && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center text-lg"><span className="font-medium">Total Recaudado:</span><span className="font-bold text-green-600">${Number(selectedCaja.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span></div>
+                <div className="flex justify-between items-baseline"><span className="text-muted-foreground">Recaudado</span><span className="font-display text-3xl font-bold">{money(selectedCaja.total)}</span></div>
                 <div className="border-t pt-4">
-                  <h3 className="font-medium mb-2">Ventas Incluidas</h3>
+                  <h3 className="font-semibold mb-2">Ventas</h3>
                   <Accordion type="single" collapsible className="w-full">
                     {ventasCaja.length > 0 ? (
                       ventasCaja.map((venta) => (
                         <AccordionItem key={venta.id} value={`venta-${venta.id}`}>
                           <AccordionTrigger>
                             <div className="flex justify-between w-full pr-4 text-sm">
-                              <span>Venta #{venta.id} - {venta.tipo_venta?.descripcion || 'Venta'}</span>
-                              <span>{venta.hora} - ${Number(venta.total).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                              <span>#{venta.id} <span className="text-muted-foreground">{venta.tipo_venta?.descripcion || 'Venta'}</span></span>
+                              <span><span className="text-muted-foreground">{venta.hora?.substring(0, 5)}</span> <span className="ml-3 font-semibold">{money(venta.total)}</span></span>
                             </div>
                           </AccordionTrigger>
                           <AccordionContent>
@@ -230,24 +235,24 @@ export default function CajasPage() {
                         </AccordionItem>
                       ))
                     ) : (
-                      <p className="text-muted-foreground text-sm">No hay ventas registradas en esta caja.</p>
+                      <p className="text-muted-foreground text-sm">Esta caja no tiene ventas.</p>
                     )}
                   </Accordion>
                 </div>
               </div>
             )}
           </div>
-          <DialogFooter><Button onClick={() => setIsDialogOpen(false)}>Cerrar</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setIsDialogOpen(false)}>Listo</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cerrar caja del día?</AlertDialogTitle>
-            <AlertDialogDescription>Esta acción guardará el cierre con un total de ${resumenDiario.totalDia.toLocaleString('es-AR')}.</AlertDialogDescription>
+            <AlertDialogTitle>¿Cerrar la caja de hoy?</AlertDialogTitle>
+            <AlertDialogDescription>Se guarda el cierre por {money(resumenDiario.totalDia)}. Después no vas a poder borrar ventas de esta caja.</AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleCerrarCaja}>Confirmar</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel>Cancelar</AlertDialogCancel><AlertDialogAction onClick={handleCerrarCaja}>Cerrar caja</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>

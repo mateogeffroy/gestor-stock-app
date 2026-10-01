@@ -6,7 +6,7 @@ import dj_database_url
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'REDACTED'
+SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -64,7 +64,7 @@ db_directory = os.path.join(os.path.expanduser('~'), 'Documents', 'Gestor_de_sto
 os.makedirs(db_directory, exist_ok=True)
 
 DATABASES = {
-    'default': dj_database_url.config(default='postgresql://postgres:REDACTED@db.dixmxwcwkslgugzlbfrp.supabase.co:5432/postgres')
+    'default': dj_database_url.config()  # lee DATABASE_URL
 }
 
 AUTH_PASSWORD_VALIDATORS = [

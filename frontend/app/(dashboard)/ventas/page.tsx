@@ -6,8 +6,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { VentasTable } from "./components/VentasTable"
 import { VentaForm } from "./components/VentaForm"
 import { VentaDetalleDialog } from "./components/VentaDetalleDialog"
-import { ventaService } from "@/services/venta-service"
-import { NuevaVenta } from "./types" 
+import { ventaService, type NuevaVenta } from "@/services/venta-service"
 import { cajaService } from "@/services/caja-service"
 import { productoService } from "@/services/producto-service"
 import { Plus, Filter, X, ArrowUpDown } from "lucide-react"
@@ -52,14 +51,14 @@ export default function VentasPage() {
         orden: orden
       }
 
-      const data = await ventaService.getVentasPaginated(page, 5, filtros)
+      const data = await ventaService.getVentasPaginated(page, 20, filtros)
       
       setVentas(data.ventas)
       setTotalPages(data.totalPages)
       setCurrentPage(page)
     } catch (error) {
       console.error(error)
-      toast({ title: "Error", description: "Fallo al cargar la lista", variant: "destructive" })
+      toast({ title: "No se cargaron las ventas", description: "Revisá la conexión y recargá la página.", variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
@@ -145,14 +144,14 @@ export default function VentasPage() {
     if (window.confirm("¿Eliminar venta? Se devolverá el stock.")) {
       try {
         await ventaService.deleteVenta(id)
-        toast({ title: "Éxito", description: "Venta eliminada" })
+        toast({ title: "Venta eliminada", description: "El stock de sus productos volvió al inventario." })
         const targetPage = ventas.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage;
         loadVentas(targetPage)
       } catch (error: any) {
-        toast({ 
-            title: "Operación Denegada", 
-            description: "No se pueden borrar ventas de cajas ya cerradas.", 
-            variant: "destructive" 
+        toast({
+            title: "No se puede eliminar",
+            description: error.message,
+            variant: "destructive"
         })
       }
     }
@@ -174,46 +173,17 @@ export default function VentasPage() {
       const caja = await cajaService.asegurarCajaAbierta()
       if (!caja || !caja.id) throw new Error("Debes abrir la caja antes de vender.")
 
-      let datosAfip = null;
-      
-      try {
-          const resAfip = await fetch('/api/afip/emitir', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                  total: formData.total,
-                  cuitCliente: 0 
-              })
-          })
-          
-          const jsonAfip = await resAfip.json()
-          
-          if (jsonAfip.success) {
-              datosAfip = jsonAfip.data
-              toast({ 
-                title: "Factura Autorizada ✅", 
-                description: `CAE: ${datosAfip.cae} - Comprobante: ${datosAfip.nro_comprobante}`,
-                duration: 5000 
-              })
-          } else {
-              throw new Error("AFIP rechazó la facturación: " + jsonAfip.error)
-          }
-
-      } catch (afipError: any) {
-          console.error("Error facturación:", afipError)
-          throw new Error("No se pudo emitir factura. Venta cancelada.")
-      }
-
       const nuevaVenta: NuevaVenta = {
         id_caja: caja.id,
-        id_tipo_venta: formData.id_tipo_venta || 1, 
-        total: formData.total, 
-        
-        tipo_comprobante: datosAfip?.tipo_comprobante || 'Ticket',
-        nro_comprobante: datosAfip?.nro_comprobante || null,
-        cae: datosAfip?.cae || null,
-        vto_cae: datosAfip?.vto_cae || null,
-
+        id_tipo_venta: formData.facturar ? 2 : 1,
+        total: formData.total,
+        facturar: formData.facturar,
+        condicion_iva_receptor: formData.condicion_iva_receptor,
+        dni_receptor: formData.dni_receptor,
+        medio_pago: formData.medio_pago,
+        cliente_nombre: formData.cliente_nombre,
+        cliente_cuit: formData.cliente_cuit,
+        cliente_direccion: formData.cliente_direccion,
         detalles: formData.detalles.map((d: any) => ({
           id_producto: d.id_producto,
           nombre_producto: d.nombre_producto,
@@ -223,14 +193,28 @@ export default function VentasPage() {
           subtotal: Number(d.subtotal)
         }))
       }
-      
-      if (editingVenta) {
-          toast({ title: "Aviso", description: "Edición no habilitada.", variant: "warning" })
+
+      // 1. La venta se guarda siempre (aunque ARCA esté caída, no se pierde)
+      const venta = await ventaService.createVenta(nuevaVenta)
+      const totalTxt = `$${Number(formData.total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+
+      // 2. Si lleva factura, se pide el CAE; si falla, queda pendiente para reintentar desde el detalle
+      if (formData.facturar) {
+        try {
+          const f = await ventaService.facturar(venta.id)
+          toast({ title: `Venta cobrada · ${f.tipo_comprobante} ${f.nro_comprobante}`, description: `Total ${totalTxt}. CAE ${f.cae}.` })
+        } catch (e: any) {
+          toast({
+            title: "Venta cobrada, factura pendiente",
+            description: `${e.message} Reintentá desde el detalle de la venta.`,
+            variant: "destructive",
+            duration: 10000,
+          })
+        }
       } else {
-        await ventaService.createVenta(nuevaVenta)
-        toast({ title: "¡Venta Registrada!", description: "Guardada con éxito." })
+        toast({ title: "Venta cobrada", description: `Total ${totalTxt}` })
       }
-      
+
       handleCloseForm()
       loadVentas(1) 
 
@@ -254,82 +238,49 @@ export default function VentasPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>
-          <p className="text-muted-foreground">Historial y gestión de transacciones</p>
-        </div>
-        
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <h1 className="page-title">Ventas</h1>
         <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setMostrarFiltros(!mostrarFiltros)}>
-                <Filter className="mr-2 h-4 w-4" /> Filtros
-            </Button>
-            <Button onClick={() => handleOpenForm()}>
-                <Plus className="mr-2 h-4 w-4" /> Nueva Venta
-            </Button>
+          <Button variant="outline" onClick={() => setMostrarFiltros(!mostrarFiltros)} aria-expanded={mostrarFiltros}>
+            <Filter /> Filtrar
+          </Button>
+          <Button onClick={() => handleOpenForm()} className="font-semibold">
+            <Plus /> Nueva venta
+          </Button>
         </div>
       </div>
 
       {mostrarFiltros && (
-        <div className="bg-muted/40 p-4 rounded-md border flex flex-wrap gap-4 items-end animate-in slide-in-from-top-2">
-            
-            <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Fecha</label>
-                <input 
-                    type="date" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={fechaFiltro}
-                    onChange={(e) => setFechaFiltro(e.target.value)}
-                />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Desde (Hora)</label>
-                <input 
-                    type="time" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={horaInicio}
-                    onChange={(e) => setHoraInicio(e.target.value)}
-                />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">Hasta (Hora)</label>
-                <input 
-                    type="time" 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={horaFin}
-                    onChange={(e) => setHoraFin(e.target.value)}
-                />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-               <label className="text-sm font-medium">Orden</label>
-               <Button 
-                  variant="outline" 
-                  className="w-[140px] justify-between"
-                  onClick={() => setOrden(orden === 'asc' ? 'desc' : 'asc')}
-               >
-                  {orden === 'desc' ? 'Más recientes' : 'Más antiguas'}
-                  <ArrowUpDown className="h-3 w-3 ml-2 opacity-50" />
-               </Button>
-            </div>
-
-            <div className="flex gap-2 pb-0.5 ml-auto md:ml-0">
-                <Button variant="secondary" onClick={() => loadVentas(1)}>
-                    Aplicar
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => {
-                    setFechaFiltro("")
-                    setHoraInicio("")
-                    setHoraFin("")
-                    setOrden('desc') 
-                    setTimeout(() => window.location.reload(), 100) 
-                }} title="Limpiar filtros">
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
+        <div className="flex flex-wrap items-end gap-4 border-y py-4">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="f-fecha" className="text-sm font-medium">Día</label>
+            <input id="f-fecha" type="date" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={fechaFiltro} onChange={(e) => setFechaFiltro(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="f-desde" className="text-sm font-medium">Desde</label>
+            <input id="f-desde" type="time" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="f-hasta" className="text-sm font-medium">Hasta</label>
+            <input id="f-hasta" type="time" className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={horaFin} onChange={(e) => setHoraFin(e.target.value)} />
+          </div>
+          <Button variant="outline" className="w-[150px] justify-between" onClick={() => setOrden(orden === 'asc' ? 'desc' : 'asc')}>
+            {orden === 'desc' ? 'Más nuevas primero' : 'Más viejas primero'}
+            <ArrowUpDown className="opacity-50" />
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => loadVentas(1)}>Aplicar</Button>
+            <Button variant="ghost" onClick={() => {
+              setFechaFiltro("")
+              setHoraInicio("")
+              setHoraFin("")
+              setOrden('desc')
+              setTimeout(() => window.location.reload(), 100)
+            }}>
+              <X /> Limpiar
+            </Button>
+          </div>
         </div>
       )}
 
